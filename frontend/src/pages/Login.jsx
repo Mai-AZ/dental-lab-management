@@ -6,17 +6,27 @@ function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
     try {
       await axiosClient.post('/auth/login', { username, password });
       navigate('/dashboard');
     } catch (err) {
-      setError('اسم المستخدم أو كلمة السر غلط');
+      if (err.response) {
+        // رسالة السيرفر الحقيقية (غلط بالبيانات، أو محاولات كثيرة، ...)
+        setError(err.response.data?.error || 'حدث خطأ، حاولي مرة ثانية');
+      } else {
+        // ما وصلنا رد: السيرفر مطفي أو لسا عم يصحى (Neon/Render)
+        setError('تعذّر الاتصال بالسيرفر، حاولي مرة ثانية بعد قليل');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,9 +64,10 @@ function Login() {
 
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          disabled={loading}
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          دخول
+          {loading ? 'جاري الدخول...' : 'دخول'}
         </button>
       </form>
     </div>

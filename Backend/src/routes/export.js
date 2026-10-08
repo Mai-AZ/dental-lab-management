@@ -4,6 +4,18 @@ const prisma = require('../prismaClient');
 
 const router = express.Router();
 
+// تقريب لخانتين عشريتين (يتجنب أرقام مثل 10.200000000000001)
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// رد خطأ آمن: لا نحاول إرسال JSON إذا بدأ إرسال الملف فعلاً
+function sendError(res, message) {
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  res.status(500).json({ error: message });
+}
+
 // دالة مشتركة: تبني ملف Excel من أعمدة وصفوف وترسله للمتصفح
 async function sendExcel(res, { filename, sheetName, columns, rows }) {
   const workbook = new ExcelJS.Workbook();
@@ -54,14 +66,14 @@ router.get('/sales', async (req, res) => {
         serviceType: s.serviceType,
         price: s.price,
         cost: s.cost,
-        profit: s.price - s.cost,
+        profit: round2(s.price - s.cost),
         saleDate: s.saleDate.toISOString().slice(0, 10),
         notes: s.notes ?? '',
       })),
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'فشل تصدير المبيعات' });
+    sendError(res, 'فشل تصدير المبيعات');
   }
 });
 
@@ -95,7 +107,7 @@ router.get('/purchases', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'فشل تصدير المشتريات' });
+    sendError(res, 'فشل تصدير المشتريات');
   }
 });
 
@@ -113,7 +125,7 @@ router.get('/materials', async (req, res) => {
         { header: 'المادة', key: 'name', width: 24 },
         { header: 'الوحدة', key: 'unit', width: 12 },
         { header: 'الكمية', key: 'quantity', width: 12 },
-        { header: 'سعر الوحدة', key: 'pricePerUnit', width: 14 },
+        { header: 'السعر الإجمالي', key: 'totalPrice', width: 16 },
         { header: 'حد التنبيه', key: 'alertThreshold', width: 12 },
         { header: 'تاريخ الانتهاء', key: 'expiryDate', width: 16 },
       ],
@@ -121,14 +133,14 @@ router.get('/materials', async (req, res) => {
         name: m.name,
         unit: m.unit,
         quantity: m.quantity,
-        pricePerUnit: m.pricePerUnit,
+        totalPrice: round2(m.quantity * m.pricePerUnit),
         alertThreshold: m.alertThreshold,
         expiryDate: m.expiryDate ? m.expiryDate.toISOString().slice(0, 10) : '',
       })),
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'فشل تصدير المواد' });
+    sendError(res, 'فشل تصدير المواد');
   }
 });
 

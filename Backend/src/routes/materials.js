@@ -31,15 +31,23 @@ router.get('/', async (req, res) => {
 // POST /api/materials - إضافة مادة جديدة
 router.post('/', async (req, res) => {
   try {
-    const { name, unit, quantity, pricePerUnit, alertThreshold, expiryDate } = req.body;
+    const { name, unit, alertThreshold, expiryDate } = req.body;
+
+    // فحص المدخلات
+    if (!name || !name.trim() || !unit || !unit.trim()) {
+      return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
+    }
+
+    const threshold = Number(alertThreshold);
 
     const newMaterial = await prisma.material.create({
       data: {
-        name,
-        unit,
-        quantity,
-        pricePerUnit,
-        alertThreshold,
+        name: name.trim(),
+        unit: unit.trim(),
+        // الكمية والسعر يبدآن من صفر ويتحدثان من المشتريات فقط
+        quantity: 0,
+        pricePerUnit: 0,
+        alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
         expiryDate: expiryDate ? new Date(expiryDate) : null,
       },
     });
@@ -52,21 +60,33 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/materials/:id - تعديل مادة موجودة
+// ملاحظة: الكمية وسعر الوحدة لا يتعدلان من هنا، فقط من المشتريات
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, unit, quantity, pricePerUnit, alertThreshold, expiryDate } = req.body;
+    const id = Number(req.params.id);
+    const { name, unit, alertThreshold, expiryDate } = req.body;
+
+    // فحص المدخلات
+    if (!name || !name.trim() || !unit || !unit.trim()) {
+      return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
+    }
+
+    const threshold = Number(alertThreshold);
+
+    const data = {
+      name: name.trim(),
+      unit: unit.trim(),
+      alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
+    };
+
+    // نعدّل تاريخ الصلاحية فقط إذا أُرسل بالطلب (حتى لا يُمسح بالغلط)
+    if (expiryDate !== undefined) {
+      data.expiryDate = expiryDate ? new Date(expiryDate) : null;
+    }
 
     const updatedMaterial = await prisma.material.update({
-      where: { id: Number(id) },
-      data: {
-        name,
-        unit,
-        quantity,
-        pricePerUnit,
-        alertThreshold,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-      },
+      where: { id },
+      data,
     });
 
     res.json(updatedMaterial);
@@ -93,6 +113,12 @@ router.delete('/:id', async (req, res) => {
     console.error(error);
     if (error.code === 'P2025') {
       return res.status(404).json({ error: 'المادة غير موجودة' });
+    }
+    // خطأ خاص: المادة مرتبطة بعمليات شراء، فما فينا نحذفها
+    if (error.code === 'P2003' || (error.message && error.message.includes('foreign key'))) {
+      return res.status(409).json({
+        error: 'لا يمكن حذف هذه المادة لأنها مرتبطة بعمليات شراء مسجّلة. احذفي عمليات الشراء المرتبطة بها أولاً إذا رغبتِ بحذفها.',
+      });
     }
     res.status(400).json({ error: 'حدث خطأ أثناء حذف المادة' });
   }

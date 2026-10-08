@@ -52,12 +52,33 @@ function Purchases() {
         totalPrice: Number(formData.totalPrice),
       });
       resetForm();
+      // نعيد تحميل المشتريات والمواد معاً لأن الكمية والسعر تغيّرا في المواد
       fetchData();
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ، تأكد من صحة البيانات');
+      const message = err.response?.data?.error || 'حدث خطأ، تأكد من صحة البيانات';
+      alert(message);
     }
   };
+
+  const handleDelete = async (id) => {
+    if (!confirm('متأكدة من حذف عملية الشراء؟ سيتم خصم كميتها من المخزون.')) return;
+    try {
+      await axiosClient.delete(`/purchases/${id}`);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.error || 'حدث خطأ أثناء حذف عملية الشراء');
+    }
+  };
+
+  // سعر الوحدة لعملية الشراء الحالية (معاينة قبل الحفظ)
+  const unitPricePreview =
+    Number(formData.quantity) > 0 && Number(formData.totalPrice) > 0
+      ? (Number(formData.totalPrice) / Number(formData.quantity)).toFixed(2)
+      : null;
+
+  const selectedMaterial = materials.find((m) => m.id === Number(formData.materialId));
 
   if (loading) return <div className="p-8">جاري التحميل...</div>;
 
@@ -84,21 +105,30 @@ function Purchases() {
           >
             <option value="">اختر المادة</option>
             {materials.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
+              <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
             ))}
           </select>
           <input
-            name="quantity" type="number" placeholder="الكمية" value={formData.quantity}
+            name="quantity" type="number" min="0" step="any"
+            placeholder={selectedMaterial ? `الكمية (${selectedMaterial.unit})` : 'الكمية'}
+            value={formData.quantity}
             onChange={handleChange} className="border p-2 rounded" required
           />
           <input
-            name="totalPrice" type="number" placeholder="السعر الإجمالي" value={formData.totalPrice}
+            name="totalPrice" type="number" min="0" step="any"
+            placeholder="السعر الإجمالي" value={formData.totalPrice}
             onChange={handleChange} className="border p-2 rounded" required
           />
           <input
             name="notes" placeholder="ملاحظات (اختياري)" value={formData.notes}
             onChange={handleChange} className="border p-2 rounded"
           />
+          {unitPricePreview && (
+            <p className="col-span-2 text-sm text-gray-600">
+              سعر الوحدة في هذه العملية: {unitPricePreview}
+              {selectedMaterial ? ` لكل ${selectedMaterial.unit}` : ''}
+            </p>
+          )}
           <div className="col-span-2 flex gap-2">
             <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">
               تسجيل
@@ -116,8 +146,10 @@ function Purchases() {
             <th className="p-3 text-right">المادة</th>
             <th className="p-3 text-right">الكمية</th>
             <th className="p-3 text-right">السعر الإجمالي</th>
+            <th className="p-3 text-right">سعر الوحدة</th>
             <th className="p-3 text-right">التاريخ</th>
             <th className="p-3 text-right">ملاحظات</th>
+            <th className="p-3 text-right">إجراءات</th>
           </tr>
         </thead>
         <tbody>
@@ -126,8 +158,14 @@ function Purchases() {
               <td className="p-3 text-right">{p.material?.name}</td>
               <td className="p-3 text-right">{p.quantity}</td>
               <td className="p-3 text-right">{p.totalPrice}</td>
+              <td className="p-3 text-right">
+                {p.quantity > 0 ? (p.totalPrice / p.quantity).toFixed(2) : '-'}
+              </td>
               <td className="p-3 text-right">{new Date(p.purchaseDate).toLocaleDateString('ar-EG')}</td>
               <td className="p-3 text-right">{p.notes || '-'}</td>
+              <td className="p-3 text-right">
+                <button onClick={() => handleDelete(p.id)} className="text-red-600">حذف</button>
+              </td>
             </tr>
           ))}
         </tbody>

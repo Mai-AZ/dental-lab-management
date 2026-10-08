@@ -35,6 +35,7 @@ model Doctor {
   phone     String?
   createdAt DateTime @default(now())
   sales     Sale[]
+    workOrders WorkOrder[]
 }
 
 model Sale {
@@ -54,4 +55,15 @@ model User {
   username  String   @unique
   password  String
   createdAt DateTime @default(now())
+}
+model WorkOrder {
+  id           Int       @id @default(autoincrement())
+  doctorId     Int
+  doctor       Doctor    @relation(fields: [doctorId], references: [id])
+  teeth        String[]
+  workType     String
+  color        String?
+  receivedDate DateTime
+  deliveryDate DateTime?
+  createdAt    DateTime  @default(now())
 }

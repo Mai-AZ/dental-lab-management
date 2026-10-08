@@ -7,6 +7,7 @@ const links = [
   { to: '/materials', label: 'المواد' },
   { to: '/purchases', label: 'المشتريات' },
   { to: '/sales', label: 'المبيعات' },
+  { to: '/work-orders', label: 'سجل الأعمال' },
 ];
 
 export default function Navbar() {

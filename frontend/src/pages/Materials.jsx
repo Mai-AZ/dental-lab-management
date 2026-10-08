@@ -2,18 +2,21 @@ import { useState, useEffect } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
 
+// القيم الابتدائية للفورم: الكمية والسعر صفر (يتحدثون تلقائياً من المشتريات)
+const emptyForm = {
+  name: '',
+  unit: '',
+  quantity: 0,
+  pricePerUnit: 0,
+  alertThreshold: '',
+};
+
 function Materials() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    unit: '',
-    quantity: '',
-    pricePerUnit: '',
-    alertThreshold: '',
-  });
+  const [formData, setFormData] = useState(emptyForm);
 
   const fetchMaterials = async () => {
     try {
@@ -35,7 +38,7 @@ function Materials() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', unit: '', quantity: '', pricePerUnit: '', alertThreshold: '' });
+    setFormData(emptyForm);
     setEditingId(null);
     setShowForm(false);
   };
@@ -44,9 +47,11 @@ function Materials() {
     e.preventDefault();
     try {
       const payload = {
-        ...formData,
-        quantity: Number(formData.quantity),
-        pricePerUnit: Number(formData.pricePerUnit),
+        name: formData.name,
+        unit: formData.unit,
+        // عند الإضافة = 0، وعند التعديل نحافظ على القيم الحالية دون تغيير
+        quantity: Number(formData.quantity) || 0,
+        pricePerUnit: Number(formData.pricePerUnit) || 0,
         alertThreshold: Number(formData.alertThreshold) || 5,
       };
       if (editingId) {
@@ -81,6 +86,8 @@ function Materials() {
       fetchMaterials();
     } catch (err) {
       console.error(err);
+      const message = err.response?.data?.error || 'حدث خطأ أثناء حذف المادة';
+      alert(message);
     }
   };
 
@@ -112,17 +119,12 @@ function Materials() {
             onChange={handleChange} className="border p-2 rounded" required
           />
           <input
-            name="quantity" type="number" placeholder="الكمية" value={formData.quantity}
-            onChange={handleChange} className="border p-2 rounded" required
-          />
-          <input
-            name="pricePerUnit" type="number" placeholder="سعر الوحدة" value={formData.pricePerUnit}
-            onChange={handleChange} className="border p-2 rounded" required
-          />
-          <input
             name="alertThreshold" type="number" placeholder="حد التنبيه (افتراضي 5 لو تركتها فاضية)" value={formData.alertThreshold}
-            onChange={handleChange} className="border p-2 rounded"
+            onChange={handleChange} className="border p-2 rounded col-span-2"
           />
+          <p className="col-span-2 text-sm text-gray-500">
+            الكمية والسعر يبدآن من صفر، ويتحدثان تلقائياً عند تسجيل أي عملية شراء لهذه المادة.
+          </p>
           <div className="col-span-2 flex gap-2">
             <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">
               {editingId ? 'حفظ التعديل' : 'إضافة'}
@@ -134,35 +136,36 @@ function Materials() {
         </form>
       )}
 
-     <table className="w-full bg-white rounded shadow table-fixed">
-  <thead className="bg-gray-100">
-    <tr>
-      <th className="p-3 text-right w-1/5">الاسم</th>
-      <th className="p-3 text-right w-1/6">الوحدة</th>
-      <th className="p-3 text-right w-1/6">الكمية</th>
-      <th className="p-3 text-right w-1/6">السعر</th>
-      <th className="p-3 text-right w-1/6">حد التنبيه</th>
-      <th className="p-3 text-right w-1/5">إجراءات</th>
-    </tr>
-  </thead>
-  <tbody>
-  {materials.map((m) => (
-    <tr key={m.id} className={`border-t ${m.quantity < m.alertThreshold ? 'bg-red-50' : ''}`}>
-      <td className="p-3 text-right truncate">{m.name}</td>
-      <td className="p-3 text-right truncate">{m.unit}</td>
-      <td className="p-3 text-right">{m.quantity}</td>
-      <td className="p-3 text-right">{m.pricePerUnit}</td>
-      <td className="p-3 text-right">{m.alertThreshold}</td>
-      <td className="p-3 text-right">
-        <div className="flex gap-2 justify-end">
-          <button onClick={() => handleEdit(m)} className="text-blue-600">تعديل</button>
-          <button onClick={() => handleDelete(m.id)} className="text-red-600">حذف</button>
-        </div>
-      </td>
-    </tr>
-  ))}
-</tbody>
-</table>
+      <table className="w-full bg-white rounded shadow table-fixed">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="p-3 text-right w-1/5">الاسم</th>
+            <th className="p-3 text-right w-1/6">الوحدة</th>
+            <th className="p-3 text-right w-1/6">الكمية</th>
+            <th className="p-3 text-right w-1/6">السعر الإجمالي</th>
+            <th className="p-3 text-right w-1/6">حد التنبيه</th>
+            <th className="p-3 text-right w-1/5">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {materials.map((m) => (
+            <tr key={m.id} className={`border-t ${m.quantity < m.alertThreshold ? 'bg-red-50' : ''}`}>
+              <td className="p-3 text-right truncate">{m.name}</td>
+              <td className="p-3 text-right truncate">{m.unit}</td>
+              <td className="p-3 text-right">{m.quantity}</td>
+              {/* السعر الإجمالي = الكمية × سعر الوحدة (مجموع مشتريات المادة) */}
+              <td className="p-3 text-right">{Math.round(m.quantity * m.pricePerUnit * 100) / 100}</td>
+              <td className="p-3 text-right">{m.alertThreshold}</td>
+              <td className="p-3 text-right">
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => handleEdit(m)} className="text-blue-600">تعديل</button>
+                  <button onClick={() => handleDelete(m.id)} className="text-red-600">حذف</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

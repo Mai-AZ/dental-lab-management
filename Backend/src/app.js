@@ -1,29 +1,56 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const session = require('express-session');
-
-require('dotenv').config();
+const pg = require('pg');
+const pgSession = require('connect-pg-simple')(session);
 
 const app = express();
 
-// لازم هاد السطر على Render (أو أي استضافة تستخدم proxy) عشان الكوكي الآمنة تشتغل صح
+// لازم هاد السطر على Render (أو أي استضافة تستخدم proxy) عشان الكوكي الآمنة والـ rate limit يشتغلوا صح
 app.set('trust proxy', 1);
+
+// رؤوس HTTP أمنية أساسية
+app.use(helmet());
 
 // CORS: بالتطوير المحلي بيستخدم localhost، وبالإنتاج بيستخدم رابط الفرونت اند من متغير البيئة
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  credentials: true,
 }));
-app.use(express.json());
 
-// لازم يكون SESSION_SECRET موجود دايماً، وإلا السيرفر ما بيشتغل (أأمن من قيمة احتياطية ثابتة بالكود)
+// نحدد حجم الطلب حتى ما حدا يرسل بيانات ضخمة
+app.use(express.json({ limit: '100kb' }));
+
+// حد عام للطلبات على كل الـ API (300 طلب كل 15 دقيقة لكل IP)
+app.use('/api', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'طلبات كثيرة، حاولي بعد قليل' },
+}));
+
+// لازم يكون SESSION_SECRET موجود دايماً، وإلا السيرفر ما بيشتغل
 if (!process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET غير موجود بمتغيرات البيئة! لازم تضيفيه بملف .env');
 }
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// الجلسات بتنحفظ بقاعدة البيانات (Neon) بدل الذاكرة، فما بتضيع عند إعادة تشغيل السيرفر
+const pgPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+pgPool.on('error', (err) => console.error('خطأ بالاتصال بقاعدة بيانات الجلسات:', err.message));
+
 app.use(session({
+  store: new pgSession({
+    pool: pgPool,
+    tableName: 'session',
+    createTableIfMissing: true,
+  }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -58,8 +85,22 @@ app.use('/api/auth', authRouter);
 const exportRouter = require('./routes/export');
 app.use('/api/export', requireAuth, exportRouter);
 
+const workOrdersRouter = require('./routes/workOrders');
+app.use('/api/work-orders', requireAuth, workOrdersRouter);
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'السيرفر شغال تمام' });
+});
+
+// أي route غير موجود
+app.use((req, res) => {
+  res.status(404).json({ error: 'المسار غير موجود' });
+});
+
+// معالج أخطاء عام: ما بنعرض تفاصيل الخطأ للمستخدم
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'حدث خطأ في السيرفر' });
 });
 
 const PORT = process.env.PORT || 5000;

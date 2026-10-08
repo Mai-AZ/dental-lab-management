@@ -5,6 +5,7 @@ import Materials from './pages/Materials';
 import ProtectedRoute from './components/ProtectedRoute';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
+import WorkOrders from './pages/WorkOrders';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -30,25 +31,32 @@ function App() {
         />
         <Route path="/" element={<Navigate to="/login" />} />
         <Route
-  path="/purchases"
-  element={
-    <ProtectedRoute>
-      <Purchases />
-    </ProtectedRoute>
-  }
-/>
-<Route
-  path="/sales"
-  element={
-    <ProtectedRoute>
-      <Sales />
-    </ProtectedRoute>
-  }
-/>
-  <Route path="*" element={<NotFound />} />
+          path="/purchases"
+          element={
+            <ProtectedRoute>
+              <Purchases />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales"
+          element={
+            <ProtectedRoute>
+              <Sales />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/work-orders"
+          element={
+            <ProtectedRoute>
+              <WorkOrders />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
-    
   );
 }
 
