@@ -1,115 +1,134 @@
-require('dotenv').config();
-
 const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const session = require('express-session');
-const pg = require('pg');
-const pgSession = require('connect-pg-simple')(session);
+const router = express.Router();
+const prisma = require('../prismaClient');
 
-const app = express();
+const WORK_TYPES = [
+  'خزف PDF',
+  'خزف zircon',
+  'تعويض فوق الزرع',
+  'تعويض مؤقت',
+  'أوجه فينيرز',
+];
 
-// لازم هاد السطر على Vercel (أو أي استضافة تستخدم proxy) عشان الكوكي الآمنة والـ rate limit يشتغلوا صح
-app.set('trust proxy', 1);
+// UR = علوي أيمن، UL = علوي أيسر، LR = سفلي أيمن، LL = سفلي أيسر
+const TOOTH_PATTERN = /^(UR|UL|LR|LL)[1-8]$/;
+const MAX_TEETH = 32;
+const MAX_COLOR_LENGTH = 20;
 
-// رؤوس HTTP أمنية أساسية
-app.use(helmet());
+const parseId = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 
-// CORS: بالتطوير المحلي بيستخدم localhost، وبالإنتاج بيستخدم رابط الفرونت اند من متغير البيئة
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
-}));
+const parseDate = (value) => {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
-// نحدد حجم الطلب حتى ما حدا يرسل بيانات ضخمة
-app.use(express.json({ limit: '100kb' }));
-
-// حد عام للطلبات على كل الـ API (300 طلب كل 15 دقيقة لكل IP)
-app.use('/api', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'طلبات كثيرة، حاولي بعد قليل' },
-}));
-
-// لازم يكون SESSION_SECRET موجود دايماً، وإلا السيرفر ما بيشتغل
-if (!process.env.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET غير موجود بمتغيرات البيئة! لازم تضيفيه بملف .env');
-}
-
-const isProduction = process.env.NODE_ENV === 'production';
-
-// الجلسات بتنحفظ بقاعدة البيانات (Neon) بدل الذاكرة، فما بتضيع عند إعادة تشغيل السيرفر
-// max صغير لأن الـ serverless بيفتح اتصالات كتير
-const pgPool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
-pgPool.on('error', (err) => console.error('خطأ بالاتصال بقاعدة بيانات الجلسات:', err.message));
-
-app.use(session({
-  store: new pgSession({
-    pool: pgPool,
-    tableName: 'session',
-    createTableIfMissing: true,
-  }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: isProduction,                       // https بس بالإنتاج
-    sameSite: isProduction ? 'none' : 'lax',     // 'none' لازم لما الفرونت والباك على دومينين مختلفين
-    maxAge: 1000 * 60 * 60 * 24,
-  },
-}));
-
-const requireAuth = require('./middleware/requireAuth');
-
-const materialsRouter = require('./routes/materials');
-app.use('/api/materials', requireAuth, materialsRouter);
-
-const purchasesRouter = require('./routes/purchases');
-app.use('/api/purchases', requireAuth, purchasesRouter);
-
-const doctorsRouter = require('./routes/doctors');
-app.use('/api/doctors', requireAuth, doctorsRouter);
-
-const salesRouter = require('./routes/sales');
-app.use('/api/sales', requireAuth, salesRouter);
-
-const dashboardRouter = require('./routes/dashboard');
-app.use('/api/dashboard', requireAuth, dashboardRouter);
-
-const authRouter = require('./routes/auth');
-app.use('/api/auth', authRouter);
-
-const exportRouter = require('./routes/export');
-app.use('/api/export', requireAuth, exportRouter);
-
-const workOrdersRouter = require('./routes/workOrders');
-app.use('/api/work-orders', requireAuth, workOrdersRouter);
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'السيرفر شغال تمام' });
+router.get('/', async (req, res) => {
+  try {
+    const orders = await prisma.workOrder.findMany({
+      include: { doctor: true },
+      orderBy: { receivedDate: 'desc' },
+    });
+    res.json(orders);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'حدث خطأ أثناء جلب الأعمال' });
+  }
 });
 
-// أي route غير موجود
-app.use((req, res) => {
-  res.status(404).json({ error: 'المسار غير موجود' });
+router.post('/', async (req, res) => {
+  try {
+    const { doctorId, teeth, workType, color, receivedDate, deliveryDate } = req.body;
+
+    const doctorIdNum =
+      typeof doctorId === 'number' || typeof doctorId === 'string'
+        ? parseId(doctorId)
+        : null;
+    if (!doctorIdNum) {
+      return res.status(400).json({ error: 'اختاري الطبيب' });
+    }
+
+    if (!Array.isArray(teeth) || teeth.length === 0) {
+      return res.status(400).json({ error: 'اختاري سن واحد على الأقل' });
+    }
+    if (teeth.length > MAX_TEETH) {
+      return res.status(400).json({ error: 'عدد الأسنان أكبر من المسموح' });
+    }
+    if (!teeth.every((t) => typeof t === 'string' && TOOTH_PATTERN.test(t))) {
+      return res.status(400).json({ error: 'قيمة سن غير صالحة' });
+    }
+
+    if (!WORK_TYPES.includes(workType)) {
+      return res.status(400).json({ error: 'نوع العمل غير صالح' });
+    }
+
+    let cleanColor = null;
+    if (color !== undefined && color !== null && color !== '') {
+      if (typeof color !== 'string') {
+        return res.status(400).json({ error: 'اللون غير صالح' });
+      }
+      cleanColor = color.trim();
+      if (cleanColor.length > MAX_COLOR_LENGTH) {
+        return res.status(400).json({ error: 'اسم اللون طويل جداً' });
+      }
+      if (cleanColor === '') cleanColor = null;
+    }
+
+    const received = parseDate(receivedDate);
+    if (!received) {
+      return res.status(400).json({ error: 'تاريخ الاستلام غير صالح' });
+    }
+
+    let delivery = null;
+    if (deliveryDate) {
+      delivery = parseDate(deliveryDate);
+      if (!delivery) {
+        return res.status(400).json({ error: 'تاريخ التسليم غير صالح' });
+      }
+      if (delivery < received) {
+        return res.status(400).json({ error: 'تاريخ التسليم لازم يكون بعد تاريخ الاستلام' });
+      }
+    }
+
+    const order = await prisma.workOrder.create({
+      data: {
+        doctorId: doctorIdNum,
+        teeth: [...new Set(teeth)],
+        workType,
+        color: cleanColor,
+        receivedDate: received,
+        deliveryDate: delivery,
+      },
+      include: { doctor: true },
+    });
+    res.status(201).json(order);
+  } catch (error) {
+    console.error(error);
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'الطبيب غير موجود' });
+    }
+    res.status(500).json({ error: 'حدث خطأ أثناء إضافة العمل' });
+  }
 });
 
-// معالج أخطاء عام: ما بنعرض تفاصيل الخطأ للمستخدم
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'حدث خطأ في السيرفر' });
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'معرّف غير صالح' });
+    }
+    await prisma.workOrder.delete({ where: { id } });
+    res.json({ message: 'تم حذف العمل' });
+  } catch (error) {
+    console.error(error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'العمل غير موجود' });
+    }
+    res.status(500).json({ error: 'حدث خطأ أثناء حذف العمل' });
+  }
 });
 
-// التشغيل المحلي فقط (على Vercel الـ app بيتصدّر وهم بيشغّلوه)
-if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`✅ السيرفر شغال على http://localhost:${PORT}`);
-  });
-}
-
-module.exports = app;
+module.exports = router;

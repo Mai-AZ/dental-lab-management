@@ -43,6 +43,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // الجلسات بتنحفظ بقاعدة البيانات (Neon) بدل الذاكرة، فما بتضيع عند إعادة تشغيل السيرفر
 const pgPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
 pgPool.on('error', (err) => console.error('خطأ بالاتصال بقاعدة بيانات الجلسات:', err.message));
 
 app.use(session({
@@ -103,7 +104,12 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'حدث خطأ في السيرفر' });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`✅ السيرفر شغال على http://localhost:${PORT}`);
-});
+// التشغيل المحلي فقط (على Vercel الـ app بيتصدّر وهم بيشغّلوه)
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`✅ السيرفر شغال على http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
