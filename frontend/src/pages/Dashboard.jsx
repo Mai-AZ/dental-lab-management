@@ -46,7 +46,7 @@ export default function Dashboard() {
       setLowStock(lowStockRes.data ?? []);
     } catch (err) {
       console.error(err);
-      setError('تعذّر تحميل البيانات. تأكدي من تشغيل الباك اند ثم أعيدي المحاولة.');
+      setError('تعذّر تحميل البيانات. تأكد من تشغيل الباك اند ثم أعد المحاولة.');
     } finally {
       setLoading(false);
     }

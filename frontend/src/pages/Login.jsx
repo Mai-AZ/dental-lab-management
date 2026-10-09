@@ -20,10 +20,10 @@ function Login() {
     } catch (err) {
       if (err.response) {
         // رسالة السيرفر الحقيقية (غلط بالبيانات، أو محاولات كثيرة، ...)
-        setError(err.response.data?.error || 'حدث خطأ، حاولي مرة ثانية');
+        setError(err.response.data?.error || 'حدث خطأ، حاول مرة ثانية');
       } else {
         // ما وصلنا رد: السيرفر مطفي أو لسا عم يصحى (Neon/Render)
-        setError('تعذّر الاتصال بالسيرفر، حاولي مرة ثانية بعد قليل');
+        setError('تعذّر الاتصال بالسيرفر، حاول مرة ثانية بعد قليل');
       }
     } finally {
       setLoading(false);

@@ -10,7 +10,7 @@ const loginLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'محاولات كثيرة، حاولي مرة ثانية بعد 15 دقيقة' },
+  message: { error: 'محاولات كثيرة، حاول مرة ثانية بعد 15 دقيقة' },
 });
 
 // هاش وهمي: نقارن معه لما يكون اسم المستخدم غلط، حتى يتساوى وقت الرد

@@ -25,7 +25,7 @@ export default function ExportButton({ type, label = 'تصدير Excel' }) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert('تعذّر تصدير الملف. حاولي مرة ثانية.');
+      alert('تعذّر تصدير الملف. حاول مرة ثانية.');
     } finally {
       setBusy(false);
     }

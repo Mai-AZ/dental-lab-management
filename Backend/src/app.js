@@ -17,8 +17,11 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // CORS: بالتطوير المحلي بيستخدم localhost، وبالإنتاج بيستخدم رابط الفرونت اند من متغير البيئة
+// نشيل الـ / من آخر الرابط إذا انكتبت بالغلط، لأنها بتخلي CORS يفشل
+const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: allowedOrigin,
   credentials: true,
 }));
 
@@ -31,18 +34,22 @@ app.use('/api', rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'طلبات كثيرة، حاولي بعد قليل' },
+  message: { error: 'طلبات كثيرة، حاول بعد قليل' },
 }));
 
 // لازم يكون SESSION_SECRET موجود دايماً، وإلا السيرفر ما بيشتغل
 if (!process.env.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET غير موجود بمتغيرات البيئة! لازم تضيفيه بملف .env');
+  throw new Error('SESSION_SECRET غير موجود بمتغيرات البيئة! لازم تضيفه بملف .env');
 }
 
 const isProduction = process.env.NODE_ENV === 'production';
 
 // الجلسات بتنحفظ بقاعدة البيانات (Neon) بدل الذاكرة، فما بتضيع عند إعادة تشغيل السيرفر
-const pgPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+// max: 3 حتى ما نستهلك كل اتصالات قاعدة البيانات
+const pgPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 3,
+});
 
 pgPool.on('error', (err) => console.error('خطأ بالاتصال بقاعدة بيانات الجلسات:', err.message));
 
@@ -104,7 +111,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'حدث خطأ في السيرفر' });
 });
 
-// التشغيل المحلي فقط (على Vercel الـ app بيتصدّر وهم بيشغّلوه)
+// التشغيل المحلي فقط (على الاستضافات الـ app بيتصدّر وهم بيشغّلوه)
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {

@@ -48,11 +48,11 @@ router.post('/', async (req, res) => {
         ? parseId(doctorId)
         : null;
     if (!doctorIdNum) {
-      return res.status(400).json({ error: 'اختاري الطبيب' });
+      return res.status(400).json({ error: 'اختر الطبيب' });
     }
 
     if (!Array.isArray(teeth) || teeth.length === 0) {
-      return res.status(400).json({ error: 'اختاري سن واحد على الأقل' });
+      return res.status(400).json({ error: 'اختر سن واحد على الأقل' });
     }
     if (teeth.length > MAX_TEETH) {
       return res.status(400).json({ error: 'عدد الأسنان أكبر من المسموح' });

@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
 
     const doctorIdNum = parseId(doctorId);
     if (!doctorIdNum) {
-      return res.status(400).json({ error: 'اختاري الطبيب' });
+      return res.status(400).json({ error: 'اختر الطبيب' });
     }
 
     if (typeof serviceType !== 'string' || serviceType.trim() === '') {

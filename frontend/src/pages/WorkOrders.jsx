@@ -71,8 +71,8 @@ export default function WorkOrders() {
     e.preventDefault();
     setError('');
 
-    if (!form.doctorId) return setError('اختاري الطبيب');
-    if (form.teeth.length === 0) return setError('اختاري سن واحد على الأقل من المخطط');
+    if (!form.doctorId) return setError('اختر الطبيب');
+    if (form.teeth.length === 0) return setError('اختر سن واحد على الأقل من المخطط');
     if (form.deliveryDate && form.deliveryDate < form.receivedDate) {
       return setError('تاريخ التسليم لازم يكون بعد تاريخ الاستلام');
     }
@@ -129,7 +129,7 @@ export default function WorkOrders() {
               value={form.doctorId}
               onChange={(e) => setField('doctorId', e.target.value)}
             >
-              <option value="">اختاري الطبيب</option>
+              <option value="">اختر الطبيب</option>
               {doctors.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -188,7 +188,7 @@ export default function WorkOrders() {
 
         <div className="mt-4">
           <span className="block mb-2 text-sm text-gray-700">
-            اسم العمل (اضغطي على الأسنان المطلوبة) — المختار: {form.teeth.length}
+            اسم العمل (اضغط على الأسنان المطلوبة) — المختار: {form.teeth.length}
           </span>
           <div className="overflow-x-auto">
             <ToothChart selected={form.teeth} onToggle={toggleTooth} />
@@ -221,7 +221,7 @@ export default function WorkOrders() {
             {orders.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  ما في أعمال مسجّلة لسا. أضيفي أول عمل من الفورم فوق.
+                  ما في أعمال مسجّلة لسا. أضف أول عمل من الفورم فوق.
                 </td>
               </tr>
             )}
