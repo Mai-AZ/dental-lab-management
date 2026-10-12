@@ -1,1 +1,51 @@
 @import "tailwindcss";
+
+/* الخط الافتراضي لكل الموقع */
+@theme {
+  --font-sans: "Cairo", "Segoe UI", Tahoma, sans-serif;
+}
+
+body {
+  font-family: "Cairo", "Segoe UI", Tahoma, sans-serif;
+  background: #f1f5f4;
+  color: #0f172a;
+}
+
+/* ظهور ناعم من تحت لفوق (تُستخدم مع animationDelay للتتابع) */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-up {
+  animation: fadeUp 0.55s ease both;
+}
+
+/* حركة عائمة للأشكال الخلفية بصفحة الدخول */
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-18px) scale(1.04);
+  }
+}
+
+.floaty {
+  animation: floaty 7s ease-in-out infinite;
+}
+
+/* احترام من يفضّل تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .floaty {
+    animation: none;
+  }
+}

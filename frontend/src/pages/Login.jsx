@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
+import ToothIcon from '../components/ToothIcon';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -31,41 +32,68 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-teal-900 via-teal-700 to-emerald-500 px-4">
+      {/* أشكال خلفية ناعمة متحركة */}
+      <div className="floaty pointer-events-none absolute -top-24 -start-24 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
+      <div
+        className="floaty pointer-events-none absolute -bottom-28 -end-20 h-96 w-96 rounded-full bg-emerald-300/20 blur-3xl"
+        style={{ animationDelay: '2s' }}
+      />
+      <div
+        className="floaty pointer-events-none absolute top-1/3 end-1/4 h-40 w-40 rounded-full bg-teal-200/10 blur-xl"
+        style={{ animationDelay: '4s' }}
+      />
+
       <form
         onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-lg shadow-md w-80"
+        className="fade-up relative w-full max-w-sm rounded-3xl bg-white/95 p-8 shadow-2xl ring-1 ring-white/40 backdrop-blur"
       >
-        <h1 className="text-xl font-bold mb-6 text-center">تسجيل الدخول</h1>
+        {/* الشعار والعنوان */}
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white shadow-lg">
+            <ToothIcon className="h-9 w-9" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">مخبر الأسنان</h1>
+          <p className="mt-1 text-sm text-gray-500">سجّل دخولك لإدارة المخبر</p>
+        </div>
 
         {error && (
-          <div className="bg-red-100 text-red-700 p-2 rounded mb-4 text-sm">
+          <div
+            role="alert"
+            className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
 
-        <label className="block mb-2 text-sm font-medium">اسم المستخدم</label>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          اسم المستخدم
+        </label>
         <input
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full border border-gray-300 rounded p-2 mb-4"
+          autoComplete="username"
+          className="mb-4 w-full rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20"
           required
         />
 
-        <label className="block mb-2 text-sm font-medium">كلمة السر</label>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+          كلمة السر
+        </label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full border border-gray-300 rounded p-2 mb-6"
+          autoComplete="current-password"
+          className="mb-6 w-full rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20"
           required
         />
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-full rounded-xl bg-gradient-to-l from-teal-700 to-emerald-600 py-2.5 font-semibold text-white shadow-lg shadow-teal-700/30 transition hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
         >
           {loading ? 'جاري الدخول...' : 'دخول'}
         </button>
