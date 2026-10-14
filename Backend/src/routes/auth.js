@@ -17,6 +17,9 @@ const loginLimiter = rateLimit({
 // ولا يقدر أحد يعرف إذا كان اسم المستخدم موجود أو لا
 const DUMMY_HASH = bcrypt.hashSync('dummy-password', 10);
 
+// bcrypt بيقصّ كلمة السر عند 72 بايت، فنرفض الأطول (بالبايت مو بالحروف، لأن الحرف العربي = بايتين)
+const MAX_PASSWORD_BYTES = 72;
+
 // POST /api/auth/login - تسجيل الدخول
 router.post('/login', loginLimiter, async (req, res) => {
   try {
@@ -28,6 +31,11 @@ router.post('/login', loginLimiter, async (req, res) => {
       !username.trim() || !password
     ) {
       return res.status(400).json({ error: 'اسم المستخدم وكلمة السر مطلوبان' });
+    }
+
+    // نرفض كلمات السر الأطول من 72 بايت قبل ما نلمس قاعدة البيانات أو bcrypt
+    if (Buffer.byteLength(password, 'utf8') > MAX_PASSWORD_BYTES) {
+      return res.status(400).json({ error: 'كلمة السر طويلة جداً' });
     }
 
     const user = await prisma.user.findUnique({ where: { username: username.trim() } });
