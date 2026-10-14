@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 
+// نفس سقف المبيعات (sales.js) حتى يكون التعامل مع الأرقام موحّداً
+const MAX_AMOUNT = 1000000000;
+const MAX_NOTES_LENGTH = 500;
+
 // مهلة العملية: أطول من الافتراضي (5 ثوانٍ) لأن Neon قد تكون بطيئة،
 // ولأن الطلب قد ينتظر القفل حتى تنتهي عملية ثانية على نفس المادة
 const TX_OPTIONS = { maxWait: 10000, timeout: 15000 };
@@ -28,20 +32,39 @@ router.get('/', async (req, res) => {
 // POST /api/purchases - إضافة عملية شراء + تحديث كمية المادة وسعر وحدتها تلقائياً
 router.post('/', async (req, res) => {
   try {
-    const { notes } = req.body;
+    const rawNotes = req.body.notes;
     const materialId = Number(req.body.materialId);
-    const quantity = Number(req.body.quantity);
-    const totalPrice = Number(req.body.totalPrice);
+    const rawQuantity = Number(req.body.quantity);
+    const rawTotalPrice = Number(req.body.totalPrice);
 
     // فحص المدخلات
     if (!Number.isInteger(materialId) || materialId <= 0) {
       return res.status(400).json({ error: 'يجب اختيار المادة' });
     }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return res.status(400).json({ error: 'الكمية يجب أن تكون رقماً أكبر من صفر' });
+    if (!Number.isFinite(rawQuantity) || rawQuantity <= 0 || rawQuantity > MAX_AMOUNT) {
+      return res.status(400).json({ error: 'الكمية يجب أن تكون رقماً أكبر من صفر وضمن الحد المسموح' });
     }
-    if (!Number.isFinite(totalPrice) || totalPrice < 0) {
-      return res.status(400).json({ error: 'السعر الإجمالي يجب أن يكون رقماً صحيحاً' });
+    if (!Number.isFinite(rawTotalPrice) || rawTotalPrice < 0 || rawTotalPrice > MAX_AMOUNT) {
+      return res.status(400).json({ error: 'السعر الإجمالي يجب أن يكون رقماً صحيحاً ضمن الحد المسموح' });
+    }
+
+    // تقريب: السعر لخانتين عشريتين، والكمية لثلاث خانات (يمنع تراكم كسور غريبة)
+    const quantity = Math.round(rawQuantity * 1000) / 1000;
+    const totalPrice = Math.round(rawTotalPrice * 100) / 100;
+    if (quantity <= 0) {
+      return res.status(400).json({ error: 'الكمية صغيرة جداً (أقصى دقة 3 خانات عشرية)' });
+    }
+
+    let notes = null;
+    if (rawNotes !== undefined && rawNotes !== null && rawNotes !== '') {
+      if (typeof rawNotes !== 'string') {
+        return res.status(400).json({ error: 'الملاحظات غير صالحة' });
+      }
+      notes = rawNotes.trim();
+      if (notes.length > MAX_NOTES_LENGTH) {
+        return res.status(400).json({ error: 'الملاحظات طويلة جداً' });
+      }
+      if (notes === '') notes = null;
     }
 
     const result = await prisma.$transaction(async (tx) => {

@@ -12,11 +12,13 @@ const parseId = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+// يرجّع المبلغ مقرّباً لخانتين عشريتين (يمنع كسور غريبة مثل 10.2000000001)
 const parseAmount = (value) => {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
   if (typeof value === 'string' && value.trim() === '') return null;
   const n = Number(value);
-  return Number.isFinite(n) && n >= 0 && n <= MAX_AMOUNT ? n : null;
+  if (!Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) return null;
+  return Math.round(n * 100) / 100;
 };
 
 // GET /api/sales - كل عمليات البيع (مع اسم الطبيب)
