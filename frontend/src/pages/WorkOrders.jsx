@@ -2,22 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import axiosClient from '../api/axiosClient';
 import ToothChart from '../components/ToothChart';
 
-const WORK_TYPES = [
-  'خزف PDF',
-  'خزف zircon',
-  'تعويض فوق الزرع',
-  'تعويض مؤقت',
-  'أوجه فينيرز',
-];
-
 // تاريخ اليوم بالتوقيت المحلي بصيغة YYYY-MM-DD
 // (toISOString كان يعطي تاريخ UTC، فيطلع أمس لو الوقت بعد منتصف الليل بتوقيتنا)
 const today = () => new Date().toLocaleDateString('en-CA');
 
-const emptyForm = () => ({
+// نوع العمل الافتراضي بيجي من السيرفر (أول نوع بالقائمة)
+const emptyForm = (defaultWorkType = '') => ({
   doctorId: '',
   teeth: [],
-  workType: WORK_TYPES[0],
+  workType: defaultWorkType,
   color: '',
   receivedDate: today(),
   deliveryDate: '',
@@ -38,6 +31,8 @@ const formatDate = (value) =>
 export default function WorkOrders() {
   const [orders, setOrders] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  // أنواع الأعمال: مصدرها الوحيد السيرفر (GET /work-orders/types)
+  const [workTypes, setWorkTypes] = useState([]);
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -64,9 +59,22 @@ export default function WorkOrders() {
     }
   };
 
+  const fetchWorkTypes = async () => {
+    try {
+      const res = await axiosClient.get('/work-orders/types');
+      setWorkTypes(res.data);
+      // نحط أول نوع كقيمة افتراضية، بدون ما نمسح اللي اختاره المستخدم لو كان اختار
+      setForm((prev) => ({ ...prev, workType: prev.workType || res.data[0] || '' }));
+    } catch (err) {
+      console.error(err);
+      setError('تعذّر تحميل أنواع الأعمال');
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchDoctors();
+    fetchWorkTypes();
   }, []);
 
   const setField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
@@ -86,6 +94,7 @@ export default function WorkOrders() {
     setError('');
 
     if (!form.doctorId) return setError('اختر الطبيب');
+    if (!form.workType) return setError('اختر نوع العمل');
     if (form.teeth.length === 0) return setError('اختر سن واحد على الأقل من المخطط');
     if (!form.receivedDate) return setError('تاريخ الاستلام مطلوب');
     if (form.deliveryDate && form.deliveryDate < form.receivedDate) {
@@ -100,7 +109,7 @@ export default function WorkOrders() {
         doctorId: Number(form.doctorId),
         deliveryDate: form.deliveryDate || null,
       });
-      setForm(emptyForm());
+      setForm(emptyForm(workTypes[0] || ''));
       fetchOrders();
     } catch (err) {
       setError(err.response?.data?.error || 'حدث خطأ أثناء إضافة العمل');
@@ -160,7 +169,8 @@ export default function WorkOrders() {
               value={form.workType}
               onChange={(e) => setField('workType', e.target.value)}
             >
-              {WORK_TYPES.map((t) => (
+              {workTypes.length === 0 && <option value="">جاري التحميل...</option>}
+              {workTypes.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
@@ -212,7 +222,7 @@ export default function WorkOrders() {
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || workTypes.length === 0}
           className="mt-4 rounded bg-teal-700 px-5 py-2 text-white hover:bg-teal-800 disabled:opacity-60"
         >
           {saving ? 'جاري الحفظ...' : 'حفظ العمل'}

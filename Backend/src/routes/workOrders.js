@@ -30,6 +30,11 @@ const parseDate = (value) => {
   return d;
 };
 
+// GET /api/work-orders/types - قائمة أنواع الأعمال (مصدر واحد للباك والفرونت)
+router.get('/types', (req, res) => {
+  res.json(WORK_TYPES);
+});
+
 router.get('/', async (req, res) => {
   try {
     const orders = await prisma.workOrder.findMany({
