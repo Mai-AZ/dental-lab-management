@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import ToothIcon from '../components/ToothIcon';
+import LanguageToggle from '../components/LanguageToggle';
+import { useLanguage } from '../i18n/LanguageContext';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -9,6 +11,7 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,10 +24,10 @@ function Login() {
     } catch (err) {
       if (err.response) {
         // رسالة السيرفر الحقيقية (غلط بالبيانات، أو محاولات كثيرة، ...)
-        setError(err.response.data?.error || 'حدث خطأ، حاول مرة ثانية');
+        setError(err.response.data?.error || t('login.error.generic'));
       } else {
         // ما وصلنا رد: السيرفر مطفي أو لسا عم يصحى (Neon/Render)
-        setError('تعذّر الاتصال بالسيرفر، حاول مرة ثانية بعد قليل');
+        setError(t('login.error.network'));
       }
     } finally {
       setLoading(false);
@@ -33,6 +36,11 @@ function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-teal-900 via-teal-700 to-emerald-500 px-4">
+      {/* زر تبديل اللغة */}
+      <div className="absolute end-4 top-4 z-10">
+        <LanguageToggle className="text-white" />
+      </div>
+
       {/* أشكال خلفية ناعمة متحركة */}
       <div className="floaty pointer-events-none absolute -top-24 -start-24 h-80 w-80 rounded-full bg-white/10 blur-2xl" />
       <div
@@ -53,8 +61,8 @@ function Login() {
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-600 to-emerald-500 text-white shadow-lg">
             <ToothIcon className="h-9 w-9" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">مخبر الأسنان</h1>
-          <p className="mt-1 text-sm text-gray-500">سجّل دخولك لإدارة المخبر</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('app.name')}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t('login.subtitle')}</p>
         </div>
 
         {error && (
@@ -67,7 +75,7 @@ function Login() {
         )}
 
         <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          اسم المستخدم
+          {t('login.username')}
         </label>
         <input
           type="text"
@@ -79,7 +87,7 @@ function Login() {
         />
 
         <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          كلمة السر
+          {t('login.password')}
         </label>
         <input
           type="password"
@@ -95,7 +103,7 @@ function Login() {
           disabled={loading}
           className="w-full rounded-xl bg-gradient-to-l from-teal-700 to-emerald-600 py-2.5 font-semibold text-white shadow-lg shadow-teal-700/30 transition hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
         >
-          {loading ? 'جاري الدخول...' : 'دخول'}
+          {loading ? t('login.submitting') : t('login.submit')}
         </button>
       </form>
     </div>

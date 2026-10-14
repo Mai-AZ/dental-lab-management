@@ -20,9 +20,10 @@ export function LanguageProvider({ children }) {
   const [lang, setLang] = useState(getInitialLang);
 
   // نحدّث اتجاه الصفحة ولغتها وننحفظ الاختيار
-  useEffect(() => {
+   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.title = translations[lang]['app.name'];
     try {
       localStorage.setItem(STORAGE_KEY, lang);
     } catch {

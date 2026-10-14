@@ -1,18 +1,21 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import ToothIcon from './ToothIcon';
+import LanguageToggle from './LanguageToggle';
+import { useLanguage } from '../i18n/LanguageContext';
 
-// روابط التنقل: كل عنصر فيه المسار والاسم الظاهر
+// روابط التنقل: كل عنصر فيه المسار ومفتاح الترجمة
 const links = [
-  { to: '/dashboard', label: 'لوحة التحكم' },
-  { to: '/materials', label: 'المواد' },
-  { to: '/purchases', label: 'المشتريات' },
-  { to: '/sales', label: 'المبيعات' },
-  { to: '/work-orders', label: 'سجل الأعمال' },
+  { to: '/dashboard', labelKey: 'nav.dashboard' },
+  { to: '/materials', labelKey: 'nav.materials' },
+  { to: '/purchases', labelKey: 'nav.purchases' },
+  { to: '/sales', labelKey: 'nav.sales' },
+  { to: '/work-orders', labelKey: 'nav.workOrders' },
 ];
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   // تسجيل الخروج: نطلب من السيرفر يمسح الجلسة، وبعدها نرجع لصفحة الدخول
   async function handleLogout() {
@@ -33,7 +36,7 @@ export default function Navbar() {
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/30">
             <ToothIcon className="h-5 w-5" />
           </span>
-          <span className="text-lg font-bold tracking-wide">مخبر الأسنان</span>
+          <span className="text-lg font-bold tracking-wide">{t('app.name')}</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
@@ -50,15 +53,17 @@ export default function Navbar() {
                 }`
               }
             >
-              {link.label}
+              {t(link.labelKey)}
             </NavLink>
           ))}
+
+          <LanguageToggle className="ms-2" />
 
           <button
             onClick={handleLogout}
             className="ms-2 rounded-full border border-white/50 px-3.5 py-1.5 text-sm transition-all duration-200 hover:bg-white hover:text-teal-800"
           >
-            تسجيل الخروج
+            {t('nav.logout')}
           </button>
         </div>
       </div>
