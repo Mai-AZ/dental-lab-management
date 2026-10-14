@@ -10,7 +10,8 @@ import NotFound from './pages/NotFound';
 
 function App() {
   return (
-    <BrowserRouter>
+    // BASE_URL بيجي من vite.config.js: '/' محلياً و '/dental-lab-management/' بعد البناء
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
