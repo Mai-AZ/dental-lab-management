@@ -20,10 +20,13 @@ const parseId = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+// تحقق صارم: لازم نص بصيغة YYYY-MM-DD وتاريخ حقيقي
+// (يرفض "2026-10" والأرقام والتواريخ المستحيلة مثل 2026-02-31)
 const parseDate = (value) => {
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) return null;
+  return d;
 };
 
 router.get('/', async (req, res) => {
@@ -79,14 +82,14 @@ router.post('/', async (req, res) => {
 
     const received = parseDate(receivedDate);
     if (!received) {
-      return res.status(400).json({ error: 'تاريخ الاستلام غير صالح' });
+      return res.status(400).json({ error: 'تاريخ الاستلام غير صالح، استخدم الصيغة YYYY-MM-DD' });
     }
 
     let delivery = null;
-    if (deliveryDate) {
+    if (deliveryDate !== undefined && deliveryDate !== null && deliveryDate !== '') {
       delivery = parseDate(deliveryDate);
       if (!delivery) {
-        return res.status(400).json({ error: 'تاريخ التسليم غير صالح' });
+        return res.status(400).json({ error: 'تاريخ التسليم غير صالح، استخدم الصيغة YYYY-MM-DD' });
       }
       if (delivery < received) {
         return res.status(400).json({ error: 'تاريخ التسليم لازم يكون بعد تاريخ الاستلام' });

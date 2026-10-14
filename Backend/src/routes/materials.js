@@ -2,6 +2,29 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 
+// تحقق صارم من تاريخ الصلاحية: لازم نص بصيغة YYYY-MM-DD وتاريخ حقيقي
+// (يرفض الأرقام مثل 20251013، والنصوص الجزئية مثل "2026-10"، والتواريخ المستحيلة مثل 2026-02-31)
+// الفاضي (undefined / null / '') = بدون تاريخ
+const parseExpiryDate = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return { valid: true, date: null };
+  }
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { valid: false };
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  // نتأكد إن التاريخ ما انقلب (مثلاً 2026-02-31 بيصير 2026-03-03)
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return { valid: false };
+  }
+  return { valid: true, date };
+};
+
+const parseId = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
 // GET /api/materials/low-stock - المواد يلي كميتها أقل من حد التنبيه
 router.get('/low-stock', async (req, res) => {
   try {
@@ -34,8 +57,16 @@ router.post('/', async (req, res) => {
     const { name, unit, alertThreshold, expiryDate } = req.body;
 
     // فحص المدخلات
-    if (!name || !name.trim() || !unit || !unit.trim()) {
+    if (
+      typeof name !== 'string' || typeof unit !== 'string' ||
+      !name.trim() || !unit.trim()
+    ) {
       return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
+    }
+
+    const expiry = parseExpiryDate(expiryDate);
+    if (!expiry.valid) {
+      return res.status(400).json({ error: 'تاريخ الصلاحية غير صالح، استخدم الصيغة YYYY-MM-DD' });
     }
 
     const threshold = Number(alertThreshold);
@@ -48,7 +79,7 @@ router.post('/', async (req, res) => {
         quantity: 0,
         pricePerUnit: 0,
         alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
+        expiryDate: expiry.date,
       },
     });
 
@@ -63,11 +94,18 @@ router.post('/', async (req, res) => {
 // ملاحظة: الكمية وسعر الوحدة لا يتعدلان من هنا، فقط من المشتريات
 router.put('/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'رقم المادة غير صحيح' });
+    }
+
     const { name, unit, alertThreshold, expiryDate } = req.body;
 
     // فحص المدخلات
-    if (!name || !name.trim() || !unit || !unit.trim()) {
+    if (
+      typeof name !== 'string' || typeof unit !== 'string' ||
+      !name.trim() || !unit.trim()
+    ) {
       return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
     }
 
@@ -81,7 +119,11 @@ router.put('/:id', async (req, res) => {
 
     // نعدّل تاريخ الصلاحية فقط إذا أُرسل بالطلب (حتى لا يُمسح بالغلط)
     if (expiryDate !== undefined) {
-      data.expiryDate = expiryDate ? new Date(expiryDate) : null;
+      const expiry = parseExpiryDate(expiryDate);
+      if (!expiry.valid) {
+        return res.status(400).json({ error: 'تاريخ الصلاحية غير صالح، استخدم الصيغة YYYY-MM-DD' });
+      }
+      data.expiryDate = expiry.date;
     }
 
     const updatedMaterial = await prisma.material.update({
@@ -102,10 +144,13 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/materials/:id - حذف مادة
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'رقم المادة غير صحيح' });
+    }
 
     await prisma.material.delete({
-      where: { id: Number(id) },
+      where: { id },
     });
 
     res.json({ message: 'تم حذف المادة بنجاح' });
