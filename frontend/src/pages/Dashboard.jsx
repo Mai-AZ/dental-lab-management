@@ -145,11 +145,10 @@ export default function Dashboard() {
       ]);
 
       setSummary(summaryRes.data);
-      // ?? [] تعني: لو الحقل غير موجود استخدم مصفوفة فاضية بدل ما ينهار الموقع
-      setSales(activityRes.data.sales ?? activityRes.data.recentSales ?? []);
-      setPurchases(
-        activityRes.data.purchases ?? activityRes.data.recentPurchases ?? []
-      );
+           // ?? [] تعني: لو الحقل غير موجود استخدم مصفوفة فاضية بدل ما ينهار الموقع
+      setSales(activityRes.data.recentSales ?? []);
+      setPurchases(activityRes.data.recentPurchases ?? []);
+      
       setLowStock(lowStockRes.data ?? []);
       setMonthly(Array.isArray(monthlyRes.data) ? monthlyRes.data : []);
     } catch (err) {
