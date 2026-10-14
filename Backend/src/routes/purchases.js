@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 
+// مهلة العملية: أطول من الافتراضي (5 ثوانٍ) لأن Neon قد تكون بطيئة،
+// ولأن الطلب قد ينتظر القفل حتى تنتهي عملية ثانية على نفس المادة
+const TX_OPTIONS = { maxWait: 10000, timeout: 15000 };
+
+// قفل صف المادة حتى نهاية الـ transaction.
+// أي عملية ثانية على نفس المادة تنتظر هنا، وبعدها تقرأ الكمية المحدّثة (يمنع فقدان التحديث)
+const lockMaterial = (tx, materialId) =>
+  tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${materialId} FOR UPDATE`;
+
 // GET /api/purchases - كل عمليات الشراء
 router.get('/', async (req, res) => {
   try {
@@ -36,6 +45,9 @@ router.post('/', async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // 1) نقفل صف المادة أولاً، وبعدها فقط نقرأ الكمية
+      await lockMaterial(tx, materialId);
+
       const material = await tx.material.findUnique({ where: { id: materialId } });
       if (!material) {
         const err = new Error('NOT_FOUND');
@@ -60,7 +72,7 @@ router.post('/', async (req, res) => {
       });
 
       return purchase;
-    });
+    }, TX_OPTIONS);
 
     res.status(201).json(result);
   } catch (error) {
@@ -81,6 +93,21 @@ router.delete('/:id', async (req, res) => {
     }
 
     await prisma.$transaction(async (tx) => {
+      // 1) نعرف أي مادة تخص هذه العملية (materialId ما بيتغيّر) حتى نقفلها
+      const found = await tx.purchase.findUnique({
+        where: { id },
+        select: { materialId: true },
+      });
+      if (!found) {
+        const err = new Error('NOT_FOUND');
+        err.code = 'PURCHASE_NOT_FOUND';
+        throw err;
+      }
+
+      // 2) نقفل صف المادة
+      await lockMaterial(tx, found.materialId);
+
+      // 3) نعيد قراءة العملية والمادة بعد القفل (قد تكون عملية ثانية حذفتها أو غيّرت الكمية)
       const purchase = await tx.purchase.findUnique({
         where: { id },
         include: { material: true },
@@ -116,7 +143,7 @@ router.delete('/:id', async (req, res) => {
           pricePerUnit: newPricePerUnit,
         },
       });
-    });
+    }, TX_OPTIONS);
 
     res.json({ success: true });
   } catch (error) {

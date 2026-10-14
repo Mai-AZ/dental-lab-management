@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
 
@@ -7,6 +7,10 @@ function Purchases() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  // الـ ref بيمنع النقرة المزدوجة فوراً (الـ state بيتحدّث متأخر شوي)
+  const busyRef = useRef(false);
   const [formData, setFormData] = useState({
     materialId: '',
     quantity: '',
@@ -44,6 +48,9 @@ function Purchases() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSubmitting(true);
     try {
       await axiosClient.post('/purchases', {
         ...formData,
@@ -53,22 +60,31 @@ function Purchases() {
       });
       resetForm();
       // نعيد تحميل المشتريات والمواد معاً لأن الكمية والسعر تغيّرا في المواد
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
       const message = err.response?.data?.error || 'حدث خطأ، تأكد من صحة البيانات';
       alert(message);
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('متأكدة من حذف عملية الشراء؟ سيتم خصم كميتها من المخزون.')) return;
+    if (busyRef.current) return;
+    if (!confirm('متأكد من حذف عملية الشراء؟ سيتم خصم كميتها من المخزون.')) return;
+    busyRef.current = true;
+    setDeletingId(id);
     try {
       await axiosClient.delete(`/purchases/${id}`);
-      fetchData();
+      await fetchData();
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || 'حدث خطأ أثناء حذف عملية الشراء');
+    } finally {
+      busyRef.current = false;
+      setDeletingId(null);
     }
   };
 
@@ -130,10 +146,19 @@ function Purchases() {
             </p>
           )}
           <div className="col-span-2 flex gap-2">
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">
-              تسجيل
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'جاري الحفظ...' : 'تسجيل'}
             </button>
-            <button type="button" onClick={resetForm} className="bg-gray-300 px-4 py-2 rounded">
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={submitting}
+              className="bg-gray-300 px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               إلغاء
             </button>
           </div>
@@ -164,7 +189,13 @@ function Purchases() {
               <td className="p-3 text-right">{new Date(p.purchaseDate).toLocaleDateString('ar-EG')}</td>
               <td className="p-3 text-right">{p.notes || '-'}</td>
               <td className="p-3 text-right">
-                <button onClick={() => handleDelete(p.id)} className="text-red-600">حذف</button>
+                <button
+                  onClick={() => handleDelete(p.id)}
+                  disabled={deletingId !== null || submitting}
+                  className="text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingId === p.id ? 'جاري الحذف...' : 'حذف'}
+                </button>
               </td>
             </tr>
           ))}
