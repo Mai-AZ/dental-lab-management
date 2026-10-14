@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axiosClient from '../api/axiosClient';
 import ToothChart from '../components/ToothChart';
 
@@ -10,7 +10,9 @@ const WORK_TYPES = [
   'أوجه فينيرز',
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+// تاريخ اليوم بالتوقيت المحلي بصيغة YYYY-MM-DD
+// (toISOString كان يعطي تاريخ UTC، فيطلع أمس لو الوقت بعد منتصف الليل بتوقيتنا)
+const today = () => new Date().toLocaleDateString('en-CA');
 
 const emptyForm = () => ({
   doctorId: '',
@@ -21,8 +23,9 @@ const emptyForm = () => ({
   deliveryDate: '',
 });
 
+// التواريخ مخزّنة كمنتصف ليل UTC، فنعرضها بـ UTC حتى ما ينزاح اليوم
 const formatDate = (value) =>
-  value ? new Date(value).toLocaleDateString('en-GB') : '—';
+  value ? new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '—';
 
 export default function WorkOrders() {
   const [orders, setOrders] = useState([]);
@@ -30,6 +33,8 @@ export default function WorkOrders() {
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // يمنع النقرة المزدوجة فوراً (يعني ما بينضاف العمل مرتين)
+  const busyRef = useRef(false);
 
   const fetchOrders = async () => {
     try {
@@ -69,14 +74,17 @@ export default function WorkOrders() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (busyRef.current) return;
     setError('');
 
     if (!form.doctorId) return setError('اختر الطبيب');
     if (form.teeth.length === 0) return setError('اختر سن واحد على الأقل من المخطط');
+    if (!form.receivedDate) return setError('تاريخ الاستلام مطلوب');
     if (form.deliveryDate && form.deliveryDate < form.receivedDate) {
       return setError('تاريخ التسليم لازم يكون بعد تاريخ الاستلام');
     }
 
+    busyRef.current = true;
     setSaving(true);
     try {
       await axiosClient.post('/work-orders', {
@@ -89,12 +97,13 @@ export default function WorkOrders() {
     } catch (err) {
       setError(err.response?.data?.error || 'حدث خطأ أثناء إضافة العمل');
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('متأكدة من حذف هذا العمل؟')) return;
+    if (!confirm('متأكد من حذف هذا العمل؟')) return;
     try {
       await axiosClient.delete(`/work-orders/${id}`);
       fetchOrders();
@@ -107,9 +116,7 @@ export default function WorkOrders() {
     'w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400';
 
   return (
-    <div>
-   
-      <div className="mx-auto max-w-6xl p-4" dir="rtl">
+    <div className="mx-auto max-w-6xl p-4" dir="rtl">
       <h1 className="text-2xl font-bold mb-4">سجل الأعمال</h1>
 
       {error && (
@@ -249,7 +256,6 @@ export default function WorkOrders() {
             ))}
           </tbody>
         </table>
-      </div>
       </div>
     </div>
   );
