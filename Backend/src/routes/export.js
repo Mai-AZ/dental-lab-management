@@ -23,6 +23,15 @@ function sendError(res, message) {
   res.status(500).json({ error: message });
 }
 
+// حماية من حقن الصيغ (CSV/Formula Injection):
+// أي نص يبدأ بـ = أو + أو - أو @ (أو tab/CR) ممكن Excel يعتبره صيغة.
+// نضيف قبله ' فيضل نصاً عادياً. الأرقام والتواريخ ما بتتأثر.
+const FORMULA_START = /^(\s*[=+\-@]|[\t\r])/;
+const sanitizeCell = (v) =>
+  typeof v === 'string' && FORMULA_START.test(v) ? `'${v}` : v;
+const sanitizeRow = (row) =>
+  Object.fromEntries(Object.entries(row).map(([k, v]) => [k, sanitizeCell(v)]));
+
 // دالة مشتركة: تبني ملف Excel من أعمدة وصفوف وترسله للمتصفح
 async function sendExcel(res, { filename, sheetName, columns, rows }) {
   const workbook = new ExcelJS.Workbook();
@@ -33,7 +42,7 @@ async function sendExcel(res, { filename, sheetName, columns, rows }) {
 
   // columns: [{ header: 'اسم العمود', key: 'حقل', width: 20 }, ...]
   sheet.columns = columns;
-  sheet.addRows(rows);
+  sheet.addRows(rows.map(sanitizeRow));
 
   // ترويسة الجدول بخط عريض
   sheet.getRow(1).font = { bold: true };
