@@ -24,8 +24,16 @@ const emptyForm = () => ({
 });
 
 // التواريخ مخزّنة كمنتصف ليل UTC، فنعرضها بـ UTC حتى ما ينزاح اليوم
+// واسم الشهر بالحروف (مثل: 2 كانون الأول 2026) حتى ما يصير لبس بين اليوم والشهر
 const formatDate = (value) =>
-  value ? new Date(value).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '—';
+  value
+    ? new Date(value).toLocaleDateString('ar-SY-u-nu-latn', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
+    : '—';
 
 export default function WorkOrders() {
   const [orders, setOrders] = useState([]);
