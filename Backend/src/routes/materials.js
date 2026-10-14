@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 const { logAudit } = require('../utils/audit');
+const AppError = require('../utils/AppError');
+const asyncHandler = require('../utils/asyncHandler');
 
 // تحقق صارم من تاريخ الصلاحية: لازم نص بصيغة YYYY-MM-DD وتاريخ حقيقي
 // (يرفض الأرقام مثل 20251013، والنصوص الجزئية مثل "2026-10"، والتواريخ المستحيلة مثل 2026-02-31)
@@ -26,137 +28,96 @@ const parseId = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+const EXPIRY_ERROR = 'تاريخ الصلاحية غير صالح، استخدم الصيغة YYYY-MM-DD';
+
 // GET /api/materials/low-stock - المواد يلي كميتها أقل من حد التنبيه
-router.get('/low-stock', async (req, res) => {
-  try {
-    const allMaterials = await prisma.material.findMany();
-    // المقارنة صارت هون بـ JavaScript لأن Prisma ما بيدعم مقارنة عمود بعمود مباشرة
-    const lowStockMaterials = allMaterials.filter(
-      (m) => m.quantity < m.alertThreshold
-    );
-    res.json(lowStockMaterials);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'حدث خطأ أثناء جلب المواد المنخفضة' });
-  }
-});
+router.get('/low-stock', asyncHandler(async (req, res) => {
+  const allMaterials = await prisma.material.findMany();
+  // المقارنة صارت هون بـ JavaScript لأن Prisma ما بيدعم مقارنة عمود بعمود مباشرة
+  res.json(allMaterials.filter((m) => m.quantity < m.alertThreshold));
+}));
 
 // GET /api/materials - جلب كل المواد
-router.get('/', async (req, res) => {
-  try {
-    const materials = await prisma.material.findMany();
-    res.json(materials);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'حدث خطأ أثناء جلب المواد' });
-  }
-});
+router.get('/', asyncHandler(async (req, res) => {
+  const materials = await prisma.material.findMany();
+  res.json(materials);
+}));
 
 // POST /api/materials - إضافة مادة جديدة
-router.post('/', async (req, res) => {
-  try {
-    const { name, unit, alertThreshold, expiryDate } = req.body;
+router.post('/', asyncHandler(async (req, res) => {
+  const { name, unit, alertThreshold, expiryDate } = req.body;
 
-    // فحص المدخلات
-    if (
-      typeof name !== 'string' || typeof unit !== 'string' ||
-      !name.trim() || !unit.trim()
-    ) {
-      return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
-    }
-
-    const expiry = parseExpiryDate(expiryDate);
-    if (!expiry.valid) {
-      return res.status(400).json({ error: 'تاريخ الصلاحية غير صالح، استخدم الصيغة YYYY-MM-DD' });
-    }
-
-    const threshold = Number(alertThreshold);
-
-    const newMaterial = await prisma.material.create({
-      data: {
-        name: name.trim(),
-        unit: unit.trim(),
-        // الكمية والسعر يبدآن من صفر ويتحدثان من المشتريات فقط
-        quantity: 0,
-        pricePerUnit: 0,
-        alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
-        expiryDate: expiry.date,
-      },
-    });
-
-    res.status(201).json(newMaterial);
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ error: 'حدث خطأ أثناء إضافة المادة، تأكد من صحة البيانات' });
+  if (
+    typeof name !== 'string' || typeof unit !== 'string' ||
+    !name.trim() || !unit.trim()
+  ) {
+    throw new AppError('اسم المادة والوحدة مطلوبان', 400);
   }
-});
+
+  const expiry = parseExpiryDate(expiryDate);
+  if (!expiry.valid) throw new AppError(EXPIRY_ERROR, 400);
+
+  const threshold = Number(alertThreshold);
+
+  const newMaterial = await prisma.material.create({
+    data: {
+      name: name.trim(),
+      unit: unit.trim(),
+      // الكمية والسعر يبدآن من صفر ويتحدثان من المشتريات فقط
+      quantity: 0,
+      pricePerUnit: 0,
+      alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
+      expiryDate: expiry.date,
+    },
+  });
+
+  res.status(201).json(newMaterial);
+}));
 
 // PUT /api/materials/:id - تعديل مادة موجودة
 // ملاحظة: الكمية وسعر الوحدة لا يتعدلان من هنا، فقط من المشتريات
-router.put('/:id', async (req, res) => {
-  try {
-    const id = parseId(req.params.id);
-    if (!id) {
-      return res.status(400).json({ error: 'رقم المادة غير صحيح' });
-    }
+router.put('/:id', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) throw new AppError('رقم المادة غير صحيح', 400);
 
-    const { name, unit, alertThreshold, expiryDate } = req.body;
+  const { name, unit, alertThreshold, expiryDate } = req.body;
 
-    // فحص المدخلات
-    if (
-      typeof name !== 'string' || typeof unit !== 'string' ||
-      !name.trim() || !unit.trim()
-    ) {
-      return res.status(400).json({ error: 'اسم المادة والوحدة مطلوبان' });
-    }
-
-    const threshold = Number(alertThreshold);
-
-    const data = {
-      name: name.trim(),
-      unit: unit.trim(),
-      alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
-    };
-
-    // نعدّل تاريخ الصلاحية فقط إذا أُرسل بالطلب (حتى لا يُمسح بالغلط)
-    if (expiryDate !== undefined) {
-      const expiry = parseExpiryDate(expiryDate);
-      if (!expiry.valid) {
-        return res.status(400).json({ error: 'تاريخ الصلاحية غير صالح، استخدم الصيغة YYYY-MM-DD' });
-      }
-      data.expiryDate = expiry.date;
-    }
-
-    const updatedMaterial = await prisma.material.update({
-      where: { id },
-      data,
-    });
-
-    res.json(updatedMaterial);
-  } catch (error) {
-    console.error(error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ error: 'المادة غير موجودة' });
-    }
-    res.status(400).json({ error: 'حدث خطأ أثناء تعديل المادة' });
+  if (
+    typeof name !== 'string' || typeof unit !== 'string' ||
+    !name.trim() || !unit.trim()
+  ) {
+    throw new AppError('اسم المادة والوحدة مطلوبان', 400);
   }
-});
+
+  const threshold = Number(alertThreshold);
+
+  const data = {
+    name: name.trim(),
+    unit: unit.trim(),
+    alertThreshold: Number.isFinite(threshold) && threshold >= 0 ? threshold : 5,
+  };
+
+  // نعدّل تاريخ الصلاحية فقط إذا أُرسل بالطلب (حتى لا يُمسح بالغلط)
+  if (expiryDate !== undefined) {
+    const expiry = parseExpiryDate(expiryDate);
+    if (!expiry.valid) throw new AppError(EXPIRY_ERROR, 400);
+    data.expiryDate = expiry.date;
+  }
+
+  // لو المادة مو موجودة Prisma بيرمي P2025 والمعالج المركزي بيحوّله لـ 404
+  const updatedMaterial = await prisma.material.update({ where: { id }, data });
+  res.json(updatedMaterial);
+}));
 
 // DELETE /api/materials/:id - حذف مادة (مع تسجيلها بسجل التدقيق ضمن نفس الـ transaction)
-router.delete('/:id', async (req, res) => {
-  try {
-    const id = parseId(req.params.id);
-    if (!id) {
-      return res.status(400).json({ error: 'رقم المادة غير صحيح' });
-    }
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) throw new AppError('رقم المادة غير صحيح', 400);
 
+  try {
     await prisma.$transaction(async (tx) => {
       const material = await tx.material.findUnique({ where: { id } });
-      if (!material) {
-        const err = new Error('NOT_FOUND');
-        err.code = 'MATERIAL_NOT_FOUND';
-        throw err;
-      }
+      if (!material) throw new AppError('المادة غير موجودة', 404);
 
       await tx.material.delete({ where: { id } });
 
@@ -167,21 +128,18 @@ router.delete('/:id', async (req, res) => {
         before: material,
       });
     }, { maxWait: 10000, timeout: 15000 });
-
-    res.json({ message: 'تم حذف المادة بنجاح' });
   } catch (error) {
-    if (error.code === 'MATERIAL_NOT_FOUND' || error.code === 'P2025') {
-      return res.status(404).json({ error: 'المادة غير موجودة' });
+    // المادة مرتبطة بعمليات شراء، فما فينا نحذفها
+    if (error.code === 'P2003') {
+      throw new AppError(
+        'لا يمكن حذف هذه المادة لأنها مرتبطة بعمليات شراء مسجّلة. احذف عمليات الشراء المرتبطة بها أولاً إذا رغبت بحذفها.',
+        409
+      );
     }
-    console.error(error);
-    // خطأ خاص: المادة مرتبطة بعمليات شراء، فما فينا نحذفها
-    if (error.code === 'P2003' || (error.message && error.message.includes('foreign key'))) {
-      return res.status(409).json({
-        error: 'لا يمكن حذف هذه المادة لأنها مرتبطة بعمليات شراء مسجّلة. احذف عمليات الشراء المرتبطة بها أولاً إذا رغبت بحذفها.',
-      });
-    }
-    res.status(400).json({ error: 'حدث خطأ أثناء حذف المادة' });
+    throw error;
   }
-});
+
+  res.json({ message: 'تم حذف المادة بنجاح' });
+}));
 
 module.exports = router;

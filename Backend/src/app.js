@@ -127,11 +127,8 @@ app.use((req, res) => {
   res.status(404).json({ error: 'المسار غير موجود' });
 });
 
-// معالج أخطاء عام: ما بنعرض تفاصيل الخطأ للمستخدم
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'حدث خطأ في السيرفر' });
-});
+// معالج الأخطاء المركزي (لازم يكون آخر middleware)
+app.use(require('./middleware/errorHandler'));
 
 // التشغيل المحلي فقط (على الاستضافات الـ app بيتصدّر وهم بيشغّلوه)
 if (require.main === module) {
