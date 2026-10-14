@@ -83,7 +83,8 @@ router.post('/', async (req, res) => {
       });
 
       // الكمية الجديدة = القديمة + المشتراة
-      const newQuantity = material.quantity + quantity;
+      // (نقرّب لـ 3 خانات حتى لا تتراكم كسور مثل 0.30000000000000004)
+      const newQuantity = Math.round((material.quantity + quantity) * 1000) / 1000;
 
       // سعر الوحدة = متوسط مرجّح بين قيمة المخزون القديم والشراء الجديد
       const newPricePerUnit =
@@ -142,7 +143,7 @@ router.delete('/:id', async (req, res) => {
       }
 
       const material = purchase.material;
-      const newQuantity = material.quantity - purchase.quantity;
+      const newQuantity = Math.round((material.quantity - purchase.quantity) * 1000) / 1000;
 
       // لا نسمح بالحذف إذا صارت الكمية سالبة
       if (newQuantity < -1e-9) {

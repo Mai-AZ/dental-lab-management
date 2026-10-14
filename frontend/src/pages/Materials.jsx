@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
 
-// القيم الابتدائية للفورم: الكمية والسعر صفر (يتحدثون تلقائياً من المشتريات)
+// القيم الابتدائية للفورم. الكمية والسعر ما بيتعدلوا من هون،
+// بيتحدثوا تلقائياً من المشتريات فقط
 const emptyForm = {
   name: '',
   unit: '',
-  quantity: 0,
-  pricePerUnit: 0,
   alertThreshold: '',
 };
 
@@ -17,6 +16,9 @@ function Materials() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  // يمنع النقرة المزدوجة فوراً (يعني ما بتنضاف مادة مرتين)
+  const busyRef = useRef(false);
 
   const fetchMaterials = async () => {
     try {
@@ -45,14 +47,16 @@ function Materials() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSubmitting(true);
     try {
       const payload = {
         name: formData.name,
         unit: formData.unit,
-        // عند الإضافة = 0، وعند التعديل نحافظ على القيم الحالية دون تغيير
-        quantity: Number(formData.quantity) || 0,
-        pricePerUnit: Number(formData.pricePerUnit) || 0,
-        alertThreshold: Number(formData.alertThreshold) || 5,
+        // فاضي = 5 (الافتراضي)، لكن 0 يبقى 0
+        alertThreshold:
+          String(formData.alertThreshold).trim() === '' ? 5 : Number(formData.alertThreshold),
       };
       if (editingId) {
         await axiosClient.put(`/materials/${editingId}`, payload);
@@ -60,10 +64,17 @@ function Materials() {
         await axiosClient.post('/materials', payload);
       }
       resetForm();
-      fetchMaterials();
+      await fetchMaterials();
     } catch (err) {
       console.error(err);
-      alert('حدث خطأ، تأكد من صحة البيانات');
+      if (!err.response) {
+        alert('تعذّر الاتصال بالسيرفر، تأكد أنه شغّال وحاول مرة ثانية');
+      } else {
+        alert(err.response.data?.error || 'حدث خطأ، تأكد من صحة البيانات');
+      }
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -71,8 +82,6 @@ function Materials() {
     setFormData({
       name: material.name,
       unit: material.unit,
-      quantity: material.quantity,
-      pricePerUnit: material.pricePerUnit,
       alertThreshold: material.alertThreshold,
     });
     setEditingId(material.id);
@@ -119,17 +128,27 @@ function Materials() {
             onChange={handleChange} className="border p-2 rounded" required
           />
           <input
-            name="alertThreshold" type="number" placeholder="حد التنبيه (افتراضي 5 لو تركتها فاضية)" value={formData.alertThreshold}
+            name="alertThreshold" type="number" min="0" step="any"
+            placeholder="حد التنبيه (افتراضي 5 لو تركتها فاضية)" value={formData.alertThreshold}
             onChange={handleChange} className="border p-2 rounded col-span-2"
           />
           <p className="col-span-2 text-sm text-gray-500">
             الكمية والسعر يبدآن من صفر، ويتحدثان تلقائياً عند تسجيل أي عملية شراء لهذه المادة.
           </p>
           <div className="col-span-2 flex gap-2">
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">
-              {editingId ? 'حفظ التعديل' : 'إضافة'}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'إضافة'}
             </button>
-            <button type="button" onClick={resetForm} className="bg-gray-300 px-4 py-2 rounded">
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={submitting}
+              className="bg-gray-300 px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               إلغاء
             </button>
           </div>
@@ -152,7 +171,8 @@ function Materials() {
             <tr key={m.id} className={`border-t ${m.quantity < m.alertThreshold ? 'bg-red-50' : ''}`}>
               <td className="p-3 text-right truncate">{m.name}</td>
               <td className="p-3 text-right truncate">{m.unit}</td>
-              <td className="p-3 text-right">{m.quantity}</td>
+              {/* نقرّب العرض حتى ما تظهر كسور طويلة */}
+              <td className="p-3 text-right">{Math.round(m.quantity * 1000) / 1000}</td>
               {/* السعر الإجمالي = الكمية × سعر الوحدة (مجموع مشتريات المادة) */}
               <td className="p-3 text-right">{Math.round(m.quantity * m.pricePerUnit * 100) / 100}</td>
               <td className="p-3 text-right">{m.alertThreshold}</td>
