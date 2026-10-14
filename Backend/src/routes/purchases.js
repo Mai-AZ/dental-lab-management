@@ -128,14 +128,31 @@ router.delete('/:id', async (req, res) => {
         throw err;
       }
 
-      // عكس المتوسط المرجّح: نطرح قيمة هذه العملية من قيمة المخزون
-      const remainingValue = Math.max(
-        0,
-        material.quantity * material.pricePerUnit - purchase.totalPrice
-      );
-      const newPricePerUnit = newQuantity > 0 ? remainingValue / newQuantity : 0;
-
       await tx.purchase.delete({ where: { id } });
+
+      // نعيد حساب السعر من عمليات الشراء الباقية فعلياً (متوسط مرجّح = مجموع الأسعار ÷ مجموع الكميات).
+      // هيك ما بيتراكم أي خطأ تقريبي مهما صار من إضافات وحذف.
+      const remaining = await tx.purchase.aggregate({
+        where: { materialId: material.id },
+        _sum: { quantity: true, totalPrice: true },
+      });
+      const remainingQty = remaining._sum.quantity || 0;
+      const remainingPrice = remaining._sum.totalPrice || 0;
+
+      let newPricePerUnit;
+      if (newQuantity <= 0) {
+        newPricePerUnit = 0;
+      } else if (remainingQty > 0) {
+        newPricePerUnit = remainingPrice / remainingQty;
+      } else {
+        // احتياط: مخزون موجود بدون عمليات شراء مسجّلة (بيانات قديمة)، نستخدم الطريقة السابقة
+        const remainingValue = Math.max(
+          0,
+          material.quantity * material.pricePerUnit - purchase.totalPrice
+        );
+        newPricePerUnit = remainingValue / newQuantity;
+      }
+
       await tx.material.update({
         where: { id: material.id },
         data: {
