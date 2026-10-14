@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
+import { useLanguage } from '../i18n/LanguageContext';
 
 // القيم الابتدائية للفورم. الكمية والسعر ما بيتعدلوا من هون،
 // بيتحدثوا تلقائياً من المشتريات فقط
@@ -11,6 +12,7 @@ const emptyForm = {
 };
 
 function Materials() {
+  const { t, locale } = useLanguage();
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -19,6 +21,10 @@ function Materials() {
   const [submitting, setSubmitting] = useState(false);
   // يمنع النقرة المزدوجة فوراً (يعني ما بتنضاف مادة مرتين)
   const busyRef = useRef(false);
+
+  // تنسيق الأرقام حسب اللغة (أرقام لاتينية بالحالتين)
+  const num = (value, digits) =>
+    new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 
   const fetchMaterials = async () => {
     try {
@@ -68,9 +74,10 @@ function Materials() {
     } catch (err) {
       console.error(err);
       if (!err.response) {
-        alert('تعذّر الاتصال بالسيرفر، تأكد أنه شغّال وحاول مرة ثانية');
+        alert(t('materials.errNetwork'));
       } else {
-        alert(err.response.data?.error || 'حدث خطأ، تأكد من صحة البيانات');
+        // رسائل الباك بالعربي حالياً، والبديل مترجم
+        alert(err.response.data?.error || t('materials.errGeneric'));
       }
     } finally {
       busyRef.current = false;
@@ -89,103 +96,129 @@ function Materials() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('متأكد من الحذف؟')) return;
+    if (!confirm(t('materials.confirmDelete'))) return;
     try {
       await axiosClient.delete(`/materials/${id}`);
       fetchMaterials();
     } catch (err) {
       console.error(err);
-      const message = err.response?.data?.error || 'حدث خطأ أثناء حذف المادة';
-      alert(message);
+      alert(err.response?.data?.error || t('materials.errDelete'));
     }
   };
 
-  if (loading) return <div className="p-8">جاري التحميل...</div>;
+  if (loading) return <div className="p-8 text-slate-500">{t('materials.loading')}</div>;
+
+  const inputClass =
+    'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-start outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100';
+  const thClass = 'px-4 py-3 text-start text-sm font-semibold text-slate-600';
+  const tdClass = 'px-4 py-3 text-start';
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">إدارة المواد</h1>
-        <div className="flex gap-2">
+    <div className="p-4 sm:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-800">{t('materials.title')}</h1>
+        <div className="flex flex-wrap gap-2">
           <ExportButton type="materials" />
           <button
             onClick={() => { resetForm(); setShowForm(true); }}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            className="rounded-xl bg-teal-600 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-teal-700 hover:shadow"
           >
-            + إضافة مادة
+            + {t('materials.add')}
           </button>
         </div>
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow mb-6 grid grid-cols-2 gap-4">
+        <form
+          onSubmit={handleSubmit}
+          className="mb-6 grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm sm:grid-cols-2"
+        >
           <input
-            name="name" placeholder="اسم المادة" value={formData.name}
-            onChange={handleChange} className="border p-2 rounded" required
+            name="name" placeholder={t('materials.namePh')} value={formData.name}
+            onChange={handleChange} className={inputClass} required
           />
           <input
-            name="unit" placeholder="الوحدة (غرام، مل...)" value={formData.unit}
-            onChange={handleChange} className="border p-2 rounded" required
+            name="unit" placeholder={t('materials.unitPh')} value={formData.unit}
+            onChange={handleChange} className={inputClass} required
           />
           <input
             name="alertThreshold" type="number" min="0" step="any"
-            placeholder="حد التنبيه (افتراضي 5 لو تركتها فاضية)" value={formData.alertThreshold}
-            onChange={handleChange} className="border p-2 rounded col-span-2"
+            placeholder={t('materials.thresholdPh')} value={formData.alertThreshold}
+            onChange={handleChange} className={`${inputClass} sm:col-span-2`}
           />
-          <p className="col-span-2 text-sm text-gray-500">
-            الكمية والسعر يبدآن من صفر، ويتحدثان تلقائياً عند تسجيل أي عملية شراء لهذه المادة.
+          <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 sm:col-span-2">
+            {t('materials.hint')}
           </p>
-          <div className="col-span-2 flex gap-2">
+          <div className="flex gap-2 sm:col-span-2">
             <button
               type="submit"
               disabled={submitting}
-              className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-xl bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'إضافة'}
+              {submitting ? t('materials.saving') : editingId ? t('materials.saveEdit') : t('materials.create')}
             </button>
             <button
               type="button"
               onClick={resetForm}
               disabled={submitting}
-              className="bg-gray-300 px-4 py-2 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-xl bg-slate-200 px-4 py-2 font-medium text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              إلغاء
+              {t('materials.cancel')}
             </button>
           </div>
         </form>
       )}
 
-      <table className="w-full bg-white rounded shadow table-fixed">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-3 text-right w-1/5">الاسم</th>
-            <th className="p-3 text-right w-1/6">الوحدة</th>
-            <th className="p-3 text-right w-1/6">الكمية</th>
-            <th className="p-3 text-right w-1/6">السعر الإجمالي</th>
-            <th className="p-3 text-right w-1/6">حد التنبيه</th>
-            <th className="p-3 text-right w-1/5">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody>
-          {materials.map((m) => (
-            <tr key={m.id} className={`border-t ${m.quantity < m.alertThreshold ? 'bg-red-50' : ''}`}>
-              <td className="p-3 text-right truncate">{m.name}</td>
-              <td className="p-3 text-right truncate">{m.unit}</td>
-              {/* نقرّب العرض حتى ما تظهر كسور طويلة */}
-              <td className="p-3 text-right">{Math.round(m.quantity * 1000) / 1000}</td>
-              {/* السعر الإجمالي = الكمية × سعر الوحدة (مجموع مشتريات المادة) */}
-              <td className="p-3 text-right">{Math.round(m.quantity * m.pricePerUnit * 100) / 100}</td>
-              <td className="p-3 text-right">{m.alertThreshold}</td>
-              <td className="p-3 text-right">
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => handleEdit(m)} className="text-blue-600">تعديل</button>
-                  <button onClick={() => handleDelete(m.id)} className="text-red-600">حذف</button>
-                </div>
-              </td>
+      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <table className="w-full min-w-[640px] table-fixed">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className={`${thClass} w-1/5`}>{t('materials.name')}</th>
+              <th className={`${thClass} w-1/6`}>{t('materials.unit')}</th>
+              <th className={`${thClass} w-1/6`}>{t('materials.quantity')}</th>
+              <th className={`${thClass} w-1/6`}>{t('materials.totalPrice')}</th>
+              <th className={`${thClass} w-1/6`}>{t('materials.threshold')}</th>
+              <th className={`${thClass} w-1/5`}>{t('materials.actions')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {materials.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  {t('materials.empty')}
+                </td>
+              </tr>
+            )}
+            {materials.map((m) => {
+              const low = m.quantity < m.alertThreshold;
+              return (
+                <tr
+                  key={m.id}
+                  className={`border-t border-slate-100 transition hover:bg-teal-50/40 ${low ? 'bg-red-50' : ''}`}
+                >
+                  <td className={`${tdClass} truncate font-medium text-slate-800`}>{m.name}</td>
+                  <td className={`${tdClass} truncate text-slate-600`}>{m.unit}</td>
+                  {/* نقرّب العرض حتى ما تظهر كسور طويلة */}
+                  <td className={tdClass}>{num(m.quantity, 3)}</td>
+                  {/* السعر الإجمالي = الكمية × سعر الوحدة (مجموع مشتريات المادة) */}
+                  <td className={tdClass}>{num(m.quantity * m.pricePerUnit, 2)}</td>
+                  <td className={tdClass}>{num(m.alertThreshold, 3)}</td>
+                  <td className={tdClass}>
+                    <div className="flex gap-3">
+                      <button onClick={() => handleEdit(m)} className="font-medium text-teal-600 hover:underline">
+                        {t('materials.edit')}
+                      </button>
+                      <button onClick={() => handleDelete(m.id)} className="font-medium text-red-600 hover:underline">
+                        {t('materials.delete')}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

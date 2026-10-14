@@ -10,29 +10,18 @@ import {
   Legend,
 } from 'recharts';
 import axiosClient from '../api/axiosClient';
+import { useLanguage } from '../i18n/LanguageContext';
 
-// تنسيق الأرقام: 1234.5 -> 1,234.5
-const money = (n) =>
-  Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+// تنسيق الأرقام حسب اللغة (أرقام لاتينية بالحالتين): 1234.5 -> 1,234.5
+const money = (n, locale) =>
+  Number(n || 0).toLocaleString(locale, { maximumFractionDigits: 2 });
 
 // تنسيق التاريخ: نعرض اليوم فقط بدون الوقت
-const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '-');
+const formatDate = (d, locale) => (d ? new Date(d).toLocaleDateString(locale) : '-');
 
-// أسماء الأشهر بالشامي (للرسم البياني)
-const MONTHS = [
-  'كانون الثاني',
-  'شباط',
-  'آذار',
-  'نيسان',
-  'أيار',
-  'حزيران',
-  'تموز',
-  'آب',
-  'أيلول',
-  'تشرين الأول',
-  'تشرين الثاني',
-  'كانون الأول',
-];
+// اسم الشهر حسب اللغة (index من 0 إلى 11). بالعربي بيطلع بالأسماء الشامية
+const monthName = (index, locale) =>
+  new Date(2026, index, 1).toLocaleDateString(locale, { month: 'long' });
 
 // عدّاد يرتفع من 0 للرقم الحقيقي بحركة ناعمة
 function useCountUp(target, duration = 900) {
@@ -87,6 +76,7 @@ function Icon({ name, className = 'h-6 w-6' }) {
 
 // بطاقة رقم واحد (تُستخدم للمبيعات والمشتريات وصافي الربح)
 function StatCard({ title, value, icon, tone, valueClass = 'text-gray-900', delay = 0 }) {
+  const { locale } = useLanguage();
   const animated = useCountUp(value);
 
   return (
@@ -103,7 +93,7 @@ function StatCard({ title, value, icon, tone, valueClass = 'text-gray-900', dela
         </span>
       </div>
       <p className={`mt-3 text-3xl font-bold tracking-tight ${valueClass}`}>
-        {money(animated)}
+        {money(animated, locale)}
       </p>
     </div>
   );
@@ -123,18 +113,20 @@ function Section({ title, children, delay = 0 }) {
 }
 
 export default function Dashboard() {
+  const { t, locale } = useLanguage();
   const [summary, setSummary] = useState(null);
   const [sales, setSales] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [lowStock, setLowStock] = useState([]);
   const [monthly, setMonthly] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // نخزّن حالة الخطأ (true/false) مو النص، حتى يتبدّل النص مع اللغة
+  const [error, setError] = useState(false);
 
   // نجلب البيانات بنفس الوقت (Promise.all أسرع من طلب واحد بعد الثاني)
   async function loadData() {
     setLoading(true);
-    setError('');
+    setError(false);
     try {
       const [summaryRes, activityRes, lowStockRes, monthlyRes] = await Promise.all([
         axiosClient.get('/dashboard/summary'),
@@ -145,15 +137,15 @@ export default function Dashboard() {
       ]);
 
       setSummary(summaryRes.data);
-           // ?? [] تعني: لو الحقل غير موجود استخدم مصفوفة فاضية بدل ما ينهار الموقع
+      // ?? [] تعني: لو الحقل غير موجود استخدم مصفوفة فاضية بدل ما ينهار الموقع
       setSales(activityRes.data.recentSales ?? []);
       setPurchases(activityRes.data.recentPurchases ?? []);
-      
+
       setLowStock(lowStockRes.data ?? []);
       setMonthly(Array.isArray(monthlyRes.data) ? monthlyRes.data : []);
     } catch (err) {
       console.error(err);
-      setError('تعذّر تحميل البيانات. تأكد من تشغيل الباك اند ثم أعد المحاولة.');
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -168,7 +160,7 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center gap-3 p-16 text-gray-500">
         <span className="h-6 w-6 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-        <span>جارِ التحميل...</span>
+        <span>{t('dashboard.loading')}</span>
       </div>
     );
   }
@@ -177,12 +169,12 @@ export default function Dashboard() {
     return (
       <div className="mx-auto max-w-6xl p-6">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
-          <p>{error}</p>
+          <p>{t('dashboard.error')}</p>
           <button
             onClick={loadData}
             className="mt-3 rounded-lg bg-red-600 px-4 py-1.5 text-sm text-white transition hover:bg-red-700"
           >
-            إعادة المحاولة
+            {t('dashboard.retry')}
           </button>
         </div>
       </div>
@@ -191,46 +183,50 @@ export default function Dashboard() {
 
   const netProfit = summary?.netProfit ?? 0;
 
-  // بيانات الرسم: نحوّل رقم الشهر لاسمه
+  // بيانات الرسم: نحوّل رقم الشهر لاسمه حسب اللغة
   const chartData = monthly.map((m) => ({
-    name: MONTHS[m.month] ?? m.key,
+    name: Number.isInteger(m.month) && m.month >= 0 && m.month <= 11 ? monthName(m.month, locale) : m.key,
     sales: m.sales,
     purchases: m.purchases,
   }));
   const hasChartData = chartData.some((d) => d.sales > 0 || d.purchases > 0);
 
-  const todayText = new Date().toLocaleDateString('ar-SY-u-nu-latn', {
+  const todayText = new Date().toLocaleDateString(locale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
 
+  const thFirst = 'rounded-s-lg px-3 py-2 text-start font-medium';
+  const thMid = 'px-3 py-2 text-start font-medium';
+  const thLast = 'rounded-e-lg px-3 py-2 text-start font-medium';
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 pb-10">
       <div className="fade-up">
-        <h1 className="text-2xl font-bold text-gray-900">لوحة التحكم</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
         <p className="mt-0.5 text-sm text-gray-500">{todayText}</p>
       </div>
 
       {/* 1) بطاقات الملخص */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          title="إجمالي المبيعات"
+          title={t('dashboard.totalSales')}
           value={summary?.totalSales}
           icon="cash"
           tone="bg-teal-50 text-teal-700"
           delay={50}
         />
         <StatCard
-          title="إجمالي المشتريات"
+          title={t('dashboard.totalPurchases')}
           value={summary?.totalPurchases}
           icon="cart"
           tone="bg-amber-50 text-amber-600"
           delay={130}
         />
         <StatCard
-          title="صافي الربح"
+          title={t('dashboard.netProfit')}
           value={netProfit}
           icon="chart"
           tone={netProfit >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}
@@ -240,7 +236,7 @@ export default function Dashboard() {
       </div>
 
       {/* 2) الرسم البياني: آخر 6 أشهر */}
-      <Section title="المبيعات والمشتريات (آخر 6 أشهر)" delay={260}>
+      <Section title={t('dashboard.chartTitle')} delay={260}>
         {hasChartData ? (
           // الرسم دايماً من اليسار لليمين حتى ما تنعكس المحاور
           <div dir="ltr" className="h-72 w-full">
@@ -252,33 +248,33 @@ export default function Dashboard() {
                   tick={{ fontSize: 12 }}
                   axisLine={false}
                   tickLine={false}
-                  tickFormatter={(v) => money(v)}
+                  tickFormatter={(v) => money(v, locale)}
                   width={70}
                 />
                 <Tooltip
-                  formatter={(v, name) => [money(v), name]}
+                  formatter={(v, name) => [money(v, locale), name]}
                   cursor={{ fill: 'rgba(15,118,110,0.06)' }}
                   contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb' }}
                 />
                 <Legend />
-                <Bar dataKey="sales" name="المبيعات" fill="#0f766e" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="purchases" name="المشتريات" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="sales" name={t('dashboard.salesSeries')} fill="#0f766e" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="purchases" name={t('dashboard.purchasesSeries')} fill="#f59e0b" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         ) : (
           <p className="py-8 text-center text-sm text-gray-500">
-            ما في بيانات كافية للرسم البياني بعد.
+            {t('dashboard.noChartData')}
           </p>
         )}
       </Section>
 
       {/* 3) تنبيهات المخزون المنخفض */}
-      <Section title="تنبيهات المخزون" delay={320}>
+      <Section title={t('dashboard.stockAlerts')} delay={320}>
         {lowStock.length === 0 ? (
           <p className="flex items-center gap-2 text-sm text-green-700">
             <span className="h-2 w-2 rounded-full bg-green-500" />
-            كل المواد فوق حد التنبيه.
+            {t('dashboard.stockOk')}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -292,7 +288,11 @@ export default function Dashboard() {
                   {m.name}
                 </span>
                 <span className="text-red-700">
-                  المتبقي {m.quantity} {m.unit} (الحد: {m.alertThreshold})
+                  {t('dashboard.remaining', {
+                    qty: money(m.quantity, locale),
+                    unit: m.unit,
+                    threshold: money(m.alertThreshold, locale),
+                  })}
                 </span>
               </li>
             ))}
@@ -302,22 +302,22 @@ export default function Dashboard() {
 
       {/* 4) آخر العمليات */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="آخر 5 مبيعات" delay={380}>
+        <Section title={t('dashboard.recentSales')} delay={380}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-500">
-                  <th className="rounded-s-lg px-3 py-2 text-start font-medium">الطبيب</th>
-                  <th className="px-3 py-2 text-start font-medium">الخدمة</th>
-                  <th className="px-3 py-2 text-start font-medium">السعر</th>
-                  <th className="rounded-e-lg px-3 py-2 text-start font-medium">التاريخ</th>
+                  <th className={thFirst}>{t('dashboard.doctor')}</th>
+                  <th className={thMid}>{t('dashboard.service')}</th>
+                  <th className={thMid}>{t('dashboard.price')}</th>
+                  <th className={thLast}>{t('dashboard.date')}</th>
                 </tr>
               </thead>
               <tbody>
                 {sales.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-4 text-gray-500">
-                      لا توجد مبيعات بعد.
+                      {t('dashboard.noSales')}
                     </td>
                   </tr>
                 )}
@@ -328,8 +328,8 @@ export default function Dashboard() {
                   >
                     <td className="px-3 py-2.5">{s.doctor?.name ?? '-'}</td>
                     <td className="px-3 py-2.5">{s.serviceType}</td>
-                    <td className="px-3 py-2.5 font-medium text-teal-700">{money(s.price)}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{formatDate(s.saleDate)}</td>
+                    <td className="px-3 py-2.5 font-medium text-teal-700">{money(s.price, locale)}</td>
+                    <td className="px-3 py-2.5 text-gray-500">{formatDate(s.saleDate, locale)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -337,22 +337,22 @@ export default function Dashboard() {
           </div>
         </Section>
 
-        <Section title="آخر 5 مشتريات" delay={440}>
+        <Section title={t('dashboard.recentPurchases')} delay={440}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-500">
-                  <th className="rounded-s-lg px-3 py-2 text-start font-medium">المادة</th>
-                  <th className="px-3 py-2 text-start font-medium">الكمية</th>
-                  <th className="px-3 py-2 text-start font-medium">الإجمالي</th>
-                  <th className="rounded-e-lg px-3 py-2 text-start font-medium">التاريخ</th>
+                  <th className={thFirst}>{t('dashboard.material')}</th>
+                  <th className={thMid}>{t('dashboard.quantity')}</th>
+                  <th className={thMid}>{t('dashboard.total')}</th>
+                  <th className={thLast}>{t('dashboard.date')}</th>
                 </tr>
               </thead>
               <tbody>
                 {purchases.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-4 text-gray-500">
-                      لا توجد مشتريات بعد.
+                      {t('dashboard.noPurchases')}
                     </td>
                   </tr>
                 )}
@@ -362,11 +362,11 @@ export default function Dashboard() {
                     className="border-b border-gray-100 transition-colors last:border-0 hover:bg-amber-50/60"
                   >
                     <td className="px-3 py-2.5">
-                      {p.material?.name ?? `مادة #${p.materialId}`}
+                      {p.material?.name ?? t('dashboard.materialFallback', { id: p.materialId })}
                     </td>
-                    <td className="px-3 py-2.5">{p.quantity}</td>
-                    <td className="px-3 py-2.5 font-medium text-amber-700">{money(p.totalPrice)}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{formatDate(p.purchaseDate)}</td>
+                    <td className="px-3 py-2.5">{money(p.quantity, locale)}</td>
+                    <td className="px-3 py-2.5 font-medium text-amber-700">{money(p.totalPrice, locale)}</td>
+                    <td className="px-3 py-2.5 text-gray-500">{formatDate(p.purchaseDate, locale)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import axiosClient from '../api/axiosClient';
+import { useLanguage } from '../i18n/LanguageContext';
 
 // زر تصدير قابل لإعادة الاستخدام.
 // type = 'sales' أو 'purchases' أو 'materials' (نفس اسم الـ route بالباك اند)
-export default function ExportButton({ type, label = 'تصدير Excel' }) {
+// label اختياري: إذا انمرّر بيحل محل النص المترجم
+export default function ExportButton({ type, label }) {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
 
   async function handleExport() {
@@ -25,7 +28,7 @@ export default function ExportButton({ type, label = 'تصدير Excel' }) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert('تعذّر تصدير الملف. حاول مرة ثانية.');
+      alert(t('export.error'));
     } finally {
       setBusy(false);
     }
@@ -35,9 +38,9 @@ export default function ExportButton({ type, label = 'تصدير Excel' }) {
     <button
       onClick={handleExport}
       disabled={busy}
-      className="rounded bg-green-700 px-3 py-1.5 text-sm text-white hover:bg-green-800 disabled:opacity-60"
+      className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-teal-800 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {busy ? 'جارِ التصدير...' : label}
+      {busy ? t('export.busy') : label || t('export.excel')}
     </button>
   );
 }

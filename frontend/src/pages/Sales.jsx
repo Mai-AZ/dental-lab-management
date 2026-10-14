@@ -1,21 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
+import { useLanguage } from '../i18n/LanguageContext';
+
+const emptySale = { doctorId: '', serviceType: '', price: '', cost: '', notes: '' };
+const emptyDoctor = { name: '', phone: '' };
 
 function Sales() {
+  const { t, locale } = useLanguage();
   const [sales, setSales] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showDoctorForm, setShowDoctorForm] = useState(false);
-  const [formData, setFormData] = useState({
-    doctorId: '',
-    serviceType: '',
-    price: '',
-    cost: '',
-    notes: '',
-  });
-  const [doctorData, setDoctorData] = useState({ name: '', phone: '' });
+  const [submitting, setSubmitting] = useState(false);
+  // يمنع النقرة المزدوجة فوراً (يعني ما بتنسجّل عملية بيع مرتين)
+  const busyRef = useRef(false);
+  const [formData, setFormData] = useState(emptySale);
+  const [doctorData, setDoctorData] = useState(emptyDoctor);
+
+  // تنسيق الأرقام حسب اللغة (أرقام لاتينية بالحالتين)
+  const num = (value, digits) =>
+    new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 
   const fetchData = async () => {
     try {
@@ -41,141 +47,197 @@ function Sales() {
   };
 
   const resetForm = () => {
-    setFormData({ doctorId: '', serviceType: '', price: '', cost: '', notes: '' });
+    setFormData(emptySale);
     setShowForm(false);
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    await axiosClient.post('/sales', {
-      ...formData,
-      doctorId: Number(formData.doctorId),
-      price: Number(formData.price),
-      cost: Number(formData.cost) || 0,
-    });
-    resetForm();
-    fetchData();
-  } catch (err) {
-    console.error(err);
-    alert('حدث خطأ، تأكد من صحة البيانات');
-  }
-};
+  const resetDoctorForm = () => {
+    setDoctorData(emptyDoctor);
+    setShowDoctorForm(false);
+  };
 
-  const handleDoctorSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await axiosClient.post('/doctors', doctorData);
-      setDoctorData({ name: '', phone: '' });
-      setShowDoctorForm(false);
-      fetchData();
-    } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء إضافة الطبيب');
+  const showError = (err, fallbackKey) => {
+    if (!err.response) {
+      alert(t('sales.errNetwork'));
+    } else {
+      // رسائل الباك بالعربي حالياً، والبديل مترجم
+      alert(err.response.data?.error || t(fallbackKey));
     }
   };
 
-  if (loading) return <div className="p-8">جاري التحميل...</div>;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSubmitting(true);
+    try {
+      await axiosClient.post('/sales', {
+        ...formData,
+        doctorId: Number(formData.doctorId),
+        price: Number(formData.price),
+        cost: Number(formData.cost) || 0,
+      });
+      resetForm();
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showError(err, 'sales.errGeneric');
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const handleDoctorSubmit = async (e) => {
+    e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setSubmitting(true);
+    try {
+      await axiosClient.post('/doctors', doctorData);
+      resetDoctorForm();
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+      showError(err, 'sales.errDoctor');
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-slate-500">{t('sales.loading')}</div>;
+
+  const inputClass =
+    'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-start outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100';
+  const thClass = 'px-4 py-3 text-start text-sm font-semibold text-slate-600';
+  const tdClass = 'px-4 py-3 text-start';
+  const primaryBtn =
+    'rounded-xl bg-teal-600 px-4 py-2 font-medium text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60';
+  const cancelBtn =
+    'rounded-xl bg-slate-200 px-4 py-2 font-medium text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-60';
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">المبيعات</h1>
-        <div className="flex gap-2">
-          
-        <div className="flex gap-2">
-  <ExportButton type="sales" />
-  <button
-    onClick={() => setShowDoctorForm(true)}
-    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-  >
-    + طبيب جديد
-  </button>
-  <button
-    onClick={() => setShowForm(true)}
-    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-  >
-    + تسجيل بيع
-  </button>
-</div>
+    <div className="p-4 sm:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-800">{t('sales.title')}</h1>
+        <div className="flex flex-wrap gap-2">
+          <ExportButton type="sales" />
+          <button
+            onClick={() => setShowDoctorForm(true)}
+            className="rounded-xl bg-amber-500 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-amber-600 hover:shadow"
+          >
+            + {t('sales.addDoctor')}
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="rounded-xl bg-teal-600 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-teal-700 hover:shadow"
+          >
+            + {t('sales.add')}
+          </button>
         </div>
       </div>
 
       {showDoctorForm && (
-        <form onSubmit={handleDoctorSubmit} className="bg-white p-6 rounded shadow mb-6 grid grid-cols-2 gap-4">
+        <form
+          onSubmit={handleDoctorSubmit}
+          className="mb-6 grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm sm:grid-cols-2"
+        >
           <input
-            placeholder="اسم الطبيب" value={doctorData.name}
+            placeholder={t('sales.doctorNamePh')} value={doctorData.name}
             onChange={(e) => setDoctorData({ ...doctorData, name: e.target.value })}
-            className="border p-2 rounded" required
+            className={inputClass} required
           />
           <input
-            placeholder="رقم الهاتف" value={doctorData.phone}
+            placeholder={t('sales.phonePh')} value={doctorData.phone}
             onChange={(e) => setDoctorData({ ...doctorData, phone: e.target.value })}
-            className="border p-2 rounded"
+            className={inputClass}
           />
-          <div className="col-span-2 flex gap-2">
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">إضافة الطبيب</button>
-            <button type="button" onClick={() => setShowDoctorForm(false)} className="bg-gray-300 px-4 py-2 rounded">إلغاء</button>
+          <div className="flex gap-2 sm:col-span-2">
+            <button type="submit" disabled={submitting} className={primaryBtn}>
+              {submitting ? t('sales.saving') : t('sales.submitDoctor')}
+            </button>
+            <button type="button" onClick={resetDoctorForm} disabled={submitting} className={cancelBtn}>
+              {t('sales.cancel')}
+            </button>
           </div>
         </form>
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow mb-6 grid grid-cols-2 gap-4">
+        <form
+          onSubmit={handleSubmit}
+          className="mb-6 grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm sm:grid-cols-2"
+        >
           <select
             name="doctorId" value={formData.doctorId}
-            onChange={handleChange} className="border p-2 rounded" required
+            onChange={handleChange} className={inputClass} required
           >
-            <option value="">اختر الطبيب</option>
+            <option value="">{t('sales.selectDoctor')}</option>
             {doctors.map((d) => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
           <input
-            name="serviceType" placeholder="نوع الخدمة" value={formData.serviceType}
-            onChange={handleChange} className="border p-2 rounded" required
+            name="serviceType" placeholder={t('sales.serviceTypePh')} value={formData.serviceType}
+            onChange={handleChange} className={inputClass} required
           />
           <input
-            name="price" type="number" placeholder="سعر البيع" value={formData.price}
-            onChange={handleChange} className="border p-2 rounded" required
+            name="price" type="number" min="0" step="any"
+            placeholder={t('sales.pricePh')} value={formData.price}
+            onChange={handleChange} className={inputClass} required
           />
           <input
-            name="cost" type="number" placeholder="التكلفة" value={formData.cost}
-            onChange={handleChange} className="border p-2 rounded"
+            name="cost" type="number" min="0" step="any"
+            placeholder={t('sales.costPh')} value={formData.cost}
+            onChange={handleChange} className={inputClass}
           />
           <input
-            name="notes" placeholder="ملاحظات (اختياري)" value={formData.notes}
-            onChange={handleChange} className="border p-2 rounded col-span-2"
+            name="notes" placeholder={t('sales.notesPh')} value={formData.notes}
+            onChange={handleChange} className={`${inputClass} sm:col-span-2`}
           />
-          <div className="col-span-2 flex gap-2">
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">تسجيل</button>
-            <button type="button" onClick={resetForm} className="bg-gray-300 px-4 py-2 rounded">إلغاء</button>
+          <div className="flex gap-2 sm:col-span-2">
+            <button type="submit" disabled={submitting} className={primaryBtn}>
+              {submitting ? t('sales.saving') : t('sales.submit')}
+            </button>
+            <button type="button" onClick={resetForm} disabled={submitting} className={cancelBtn}>
+              {t('sales.cancel')}
+            </button>
           </div>
         </form>
       )}
 
-      <table className="w-full bg-white rounded shadow">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-3 text-right">الطبيب</th>
-            <th className="p-3 text-right">نوع الخدمة</th>
-            <th className="p-3 text-right">السعر</th>
-            <th className="p-3 text-right">التكلفة</th>
-            <th className="p-3 text-right">التاريخ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sales.map((s) => (
-            <tr key={s.id} className="border-t">
-              <td className="p-3 text-right">{s.doctor?.name}</td>
-              <td className="p-3 text-right">{s.serviceType}</td>
-              <td className="p-3 text-right">{s.price}</td>
-              <td className="p-3 text-right">{s.cost}</td>
-              <td className="p-3 text-right">{new Date(s.saleDate).toLocaleDateString('ar-EG')}</td>
+      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <table className="w-full min-w-[560px]">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className={thClass}>{t('sales.doctor')}</th>
+              <th className={thClass}>{t('sales.serviceType')}</th>
+              <th className={thClass}>{t('sales.price')}</th>
+              <th className={thClass}>{t('sales.cost')}</th>
+              <th className={thClass}>{t('sales.date')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sales.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                  {t('sales.empty')}
+                </td>
+              </tr>
+            )}
+            {sales.map((s) => (
+              <tr key={s.id} className="border-t border-slate-100 transition hover:bg-teal-50/40">
+                <td className={`${tdClass} font-medium text-slate-800`}>{s.doctor?.name}</td>
+                <td className={tdClass}>{s.serviceType}</td>
+                <td className={tdClass}>{num(s.price, 2)}</td>
+                <td className={tdClass}>{num(s.cost, 2)}</td>
+                <td className={tdClass}>{new Date(s.saleDate).toLocaleDateString(locale)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

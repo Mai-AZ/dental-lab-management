@@ -1,9 +1,12 @@
+import { useLanguage } from '../i18n/LanguageContext';
+
 // مخطط الأسنان: UR علوي أيمن، UL علوي أيسر، LR سفلي أيمن، LL سفلي أيسر
 // كما بالصورة: الربع الأيمن للمريض يظهر على يسار الشاشة، لذلك المخطط دائماً LTR
 const LEFT_SIDE = [8, 7, 6, 5, 4, 3, 2, 1];
 const RIGHT_SIDE = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export default function ToothChart({ selected = [], onToggle, small = false }) {
+  const { t } = useLanguage();
   const readOnly = typeof onToggle !== 'function';
 
   const boxSize = small ? 'w-3 h-3' : 'w-7 h-7';
@@ -27,7 +30,7 @@ export default function ToothChart({ selected = [], onToggle, small = false }) {
               disabled={readOnly}
               onClick={() => onToggle(id)}
               aria-pressed={active}
-              aria-label={`سن ${n} (${quadrant})`}
+              aria-label={t('tooth.label', { n, quadrant })}
               className={`${boxSize} border border-teal-800 ${
                 active ? 'bg-teal-800' : 'bg-white'
               } ${readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-teal-200'} ${
