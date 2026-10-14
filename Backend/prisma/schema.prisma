@@ -67,3 +67,17 @@ model WorkOrder {
   deliveryDate DateTime?
   createdAt    DateTime  @default(now())
 }
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    String?
+  username  String?
+  action    String
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

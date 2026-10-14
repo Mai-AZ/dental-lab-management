@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
+const { logAudit } = require('../utils/audit');
 
 const WORK_TYPES = [
   'خزف PDF',
@@ -123,13 +124,34 @@ router.delete('/:id', async (req, res) => {
     if (!id) {
       return res.status(400).json({ error: 'معرّف غير صالح' });
     }
-    await prisma.workOrder.delete({ where: { id } });
+
+    await prisma.$transaction(async (tx) => {
+      const order = await tx.workOrder.findUnique({
+        where: { id },
+        include: { doctor: true },
+      });
+      if (!order) {
+        const err = new Error('NOT_FOUND');
+        err.code = 'WORK_ORDER_NOT_FOUND';
+        throw err;
+      }
+
+      await tx.workOrder.delete({ where: { id } });
+
+      await logAudit(tx, req, {
+        action: 'DELETE',
+        entity: 'WorkOrder',
+        entityId: id,
+        before: order,
+      });
+    }, { maxWait: 10000, timeout: 15000 });
+
     res.json({ message: 'تم حذف العمل' });
   } catch (error) {
-    console.error(error);
-    if (error.code === 'P2025') {
+    if (error.code === 'WORK_ORDER_NOT_FOUND' || error.code === 'P2025') {
       return res.status(404).json({ error: 'العمل غير موجود' });
     }
+    console.error(error);
     res.status(500).json({ error: 'حدث خطأ أثناء حذف العمل' });
   }
 });

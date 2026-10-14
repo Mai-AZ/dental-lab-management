@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
+const { logAudit } = require('../utils/audit');
 
 // تحقق صارم من تاريخ الصلاحية: لازم نص بصيغة YYYY-MM-DD وتاريخ حقيقي
 // (يرفض الأرقام مثل 20251013، والنصوص الجزئية مثل "2026-10"، والتواريخ المستحيلة مثل 2026-02-31)
@@ -141,7 +142,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/materials/:id - حذف مادة
+// DELETE /api/materials/:id - حذف مادة (مع تسجيلها بسجل التدقيق ضمن نفس الـ transaction)
 router.delete('/:id', async (req, res) => {
   try {
     const id = parseId(req.params.id);
@@ -149,16 +150,30 @@ router.delete('/:id', async (req, res) => {
       return res.status(400).json({ error: 'رقم المادة غير صحيح' });
     }
 
-    await prisma.material.delete({
-      where: { id },
-    });
+    await prisma.$transaction(async (tx) => {
+      const material = await tx.material.findUnique({ where: { id } });
+      if (!material) {
+        const err = new Error('NOT_FOUND');
+        err.code = 'MATERIAL_NOT_FOUND';
+        throw err;
+      }
+
+      await tx.material.delete({ where: { id } });
+
+      await logAudit(tx, req, {
+        action: 'DELETE',
+        entity: 'Material',
+        entityId: id,
+        before: material,
+      });
+    }, { maxWait: 10000, timeout: 15000 });
 
     res.json({ message: 'تم حذف المادة بنجاح' });
   } catch (error) {
-    console.error(error);
-    if (error.code === 'P2025') {
+    if (error.code === 'MATERIAL_NOT_FOUND' || error.code === 'P2025') {
       return res.status(404).json({ error: 'المادة غير موجودة' });
     }
+    console.error(error);
     // خطأ خاص: المادة مرتبطة بعمليات شراء، فما فينا نحذفها
     if (error.code === 'P2003' || (error.message && error.message.includes('foreign key'))) {
       return res.status(409).json({

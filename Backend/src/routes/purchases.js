@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
+const { logAudit } = require('../utils/audit');
 
 // نفس سقف المبيعات (sales.js) حتى يكون التعامل مع الأرقام موحّداً
 const MAX_AMOUNT = 1000000000;
@@ -177,11 +178,37 @@ router.delete('/:id', async (req, res) => {
         newPricePerUnit = remainingValue / newQuantity;
       }
 
+      const finalQuantity = Math.max(0, newQuantity);
+
       await tx.material.update({
         where: { id: material.id },
         data: {
-          quantity: Math.max(0, newQuantity),
+          quantity: finalQuantity,
           pricePerUnit: newPricePerUnit,
+        },
+      });
+
+      // سجل التدقيق: مين حذف، شو كانت العملية، وكيف تغيّر المخزون والسعر
+      const { material: _material, ...purchaseData } = purchase;
+      await logAudit(tx, req, {
+        action: 'DELETE',
+        entity: 'Purchase',
+        entityId: id,
+        before: {
+          purchase: purchaseData,
+          material: {
+            id: material.id,
+            name: material.name,
+            quantity: material.quantity,
+            pricePerUnit: material.pricePerUnit,
+          },
+        },
+        after: {
+          material: {
+            id: material.id,
+            quantity: finalQuantity,
+            pricePerUnit: newPricePerUnit,
+          },
         },
       });
     }, TX_OPTIONS);
