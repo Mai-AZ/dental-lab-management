@@ -70,6 +70,28 @@ app.use(session({
   },
 }));
 
+// حماية CSRF: بما إن الكوكي sameSite=none بالإنتاج، منرفض أي طلب بيغيّر البيانات
+// (POST/PUT/PATCH/DELETE) إذا الـ Origin أو الـ Referer مو من موقع الفرونت تبعنا
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+
+  const source = req.get('Origin') || req.get('Referer');
+  // طلبات من غير متصفح (مثل Postman أو curl) ما بتبعت Origin، وما بتستخدم كوكي المتصفح، فمنمرّرها
+  if (!source) return next();
+
+  let sourceOrigin;
+  try {
+    sourceOrigin = new URL(source).origin;
+  } catch {
+    return res.status(403).json({ error: 'طلب مرفوض' });
+  }
+
+  if (sourceOrigin !== allowedOrigin) {
+    return res.status(403).json({ error: 'طلب مرفوض' });
+  }
+  next();
+});
+
 const requireAuth = require('./middleware/requireAuth');
 
 const materialsRouter = require('./routes/materials');
