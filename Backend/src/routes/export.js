@@ -6,6 +6,13 @@ const router = express.Router();
 
 // تقريب لخانتين عشريتين (يتجنب أرقام مثل 10.200000000000001)
 const round2 = (n) => Math.round(n * 100) / 100;
+// تقريب الكميات لثلاث خانات (نفس تقريب المشتريات)
+const round3 = (n) => Math.round(n * 1000) / 1000;
+
+// تاريخ ووقت العملية بتوقيت دمشق بصيغة YYYY-MM-DD
+// (السيرفر المنشور بيشتغل بتوقيت UTC، فنحدد المنطقة صراحةً حتى ما يطلع اليوم السابق)
+const formatLocalDate = (d) =>
+  d.toLocaleDateString('en-CA', { timeZone: 'Asia/Damascus' });
 
 // رد خطأ آمن: لا نحاول إرسال JSON إذا بدأ إرسال الملف فعلاً
 function sendError(res, message) {
@@ -67,7 +74,7 @@ router.get('/sales', async (req, res) => {
         price: s.price,
         cost: s.cost,
         profit: round2(s.price - s.cost),
-        saleDate: s.saleDate.toISOString().slice(0, 10),
+        saleDate: formatLocalDate(s.saleDate),
         notes: s.notes ?? '',
       })),
     });
@@ -98,10 +105,10 @@ router.get('/purchases', async (req, res) => {
       ],
       rows: purchases.map((p) => ({
         material: p.material?.name ?? '',
-        quantity: p.quantity,
+        quantity: round3(p.quantity),
         unit: p.material?.unit ?? '',
         totalPrice: p.totalPrice,
-        purchaseDate: p.purchaseDate.toISOString().slice(0, 10),
+        purchaseDate: formatLocalDate(p.purchaseDate),
         notes: p.notes ?? '',
       })),
     });
@@ -132,9 +139,10 @@ router.get('/materials', async (req, res) => {
       rows: materials.map((m) => ({
         name: m.name,
         unit: m.unit,
-        quantity: m.quantity,
+        quantity: round3(m.quantity),
         totalPrice: round2(m.quantity * m.pricePerUnit),
         alertThreshold: m.alertThreshold,
+        // تاريخ الانتهاء مخزّن كتاريخ بدون وقت (منتصف ليل UTC)، فنقرأه بـ UTC
         expiryDate: m.expiryDate ? m.expiryDate.toISOString().slice(0, 10) : '',
       })),
     });
