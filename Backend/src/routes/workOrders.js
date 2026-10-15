@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 const { logAudit } = require('../utils/audit');
+const AppError = require('../utils/AppError');
 
+// القيم مخزّنة بالعربي بالقاعدة، والفرونت بيترجم العرض فقط
 const WORK_TYPES = [
   'خزف PDF',
   'خزف zircon',
@@ -36,72 +38,53 @@ router.get('/types', (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-  try {
-    const orders = await prisma.workOrder.findMany({
-      include: { doctor: true },
-      orderBy: { receivedDate: 'desc' },
-    });
-    res.json(orders);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'حدث خطأ أثناء جلب الأعمال' });
-  }
+  const orders = await prisma.workOrder.findMany({
+    include: { doctor: true },
+    orderBy: { receivedDate: 'desc' },
+  });
+  res.json(orders);
 });
 
 router.post('/', async (req, res) => {
+  const { doctorId, teeth, workType, color, receivedDate, deliveryDate } = req.body;
+
+  const doctorIdNum =
+    typeof doctorId === 'number' || typeof doctorId === 'string'
+      ? parseId(doctorId)
+      : null;
+  if (!doctorIdNum) throw new AppError('workOrders.doctorRequired', 400);
+
+  if (!Array.isArray(teeth) || teeth.length === 0) {
+    throw new AppError('workOrders.teethRequired', 400);
+  }
+  if (teeth.length > MAX_TEETH) throw new AppError('workOrders.teethTooMany', 400);
+  if (!teeth.every((t) => typeof t === 'string' && TOOTH_PATTERN.test(t))) {
+    throw new AppError('workOrders.toothInvalid', 400);
+  }
+
+  if (!WORK_TYPES.includes(workType)) throw new AppError('workOrders.typeInvalid', 400);
+
+  let cleanColor = null;
+  if (color !== undefined && color !== null && color !== '') {
+    if (typeof color !== 'string') throw new AppError('workOrders.colorInvalid', 400);
+    cleanColor = color.trim();
+    if (cleanColor.length > MAX_COLOR_LENGTH) {
+      throw new AppError('workOrders.colorTooLong', 400);
+    }
+    if (cleanColor === '') cleanColor = null;
+  }
+
+  const received = parseDate(receivedDate);
+  if (!received) throw new AppError('workOrders.receivedInvalid', 400);
+
+  let delivery = null;
+  if (deliveryDate !== undefined && deliveryDate !== null && deliveryDate !== '') {
+    delivery = parseDate(deliveryDate);
+    if (!delivery) throw new AppError('workOrders.deliveryInvalid', 400);
+    if (delivery < received) throw new AppError('workOrders.deliveryBeforeReceived', 400);
+  }
+
   try {
-    const { doctorId, teeth, workType, color, receivedDate, deliveryDate } = req.body;
-
-    const doctorIdNum =
-      typeof doctorId === 'number' || typeof doctorId === 'string'
-        ? parseId(doctorId)
-        : null;
-    if (!doctorIdNum) {
-      return res.status(400).json({ error: 'اختر الطبيب' });
-    }
-
-    if (!Array.isArray(teeth) || teeth.length === 0) {
-      return res.status(400).json({ error: 'اختر سن واحد على الأقل' });
-    }
-    if (teeth.length > MAX_TEETH) {
-      return res.status(400).json({ error: 'عدد الأسنان أكبر من المسموح' });
-    }
-    if (!teeth.every((t) => typeof t === 'string' && TOOTH_PATTERN.test(t))) {
-      return res.status(400).json({ error: 'قيمة سن غير صالحة' });
-    }
-
-    if (!WORK_TYPES.includes(workType)) {
-      return res.status(400).json({ error: 'نوع العمل غير صالح' });
-    }
-
-    let cleanColor = null;
-    if (color !== undefined && color !== null && color !== '') {
-      if (typeof color !== 'string') {
-        return res.status(400).json({ error: 'اللون غير صالح' });
-      }
-      cleanColor = color.trim();
-      if (cleanColor.length > MAX_COLOR_LENGTH) {
-        return res.status(400).json({ error: 'اسم اللون طويل جداً' });
-      }
-      if (cleanColor === '') cleanColor = null;
-    }
-
-    const received = parseDate(receivedDate);
-    if (!received) {
-      return res.status(400).json({ error: 'تاريخ الاستلام غير صالح، استخدم الصيغة YYYY-MM-DD' });
-    }
-
-    let delivery = null;
-    if (deliveryDate !== undefined && deliveryDate !== null && deliveryDate !== '') {
-      delivery = parseDate(deliveryDate);
-      if (!delivery) {
-        return res.status(400).json({ error: 'تاريخ التسليم غير صالح، استخدم الصيغة YYYY-MM-DD' });
-      }
-      if (delivery < received) {
-        return res.status(400).json({ error: 'تاريخ التسليم لازم يكون بعد تاريخ الاستلام' });
-      }
-    }
-
     const order = await prisma.workOrder.create({
       data: {
         doctorId: doctorIdNum,
@@ -115,50 +98,34 @@ router.post('/', async (req, res) => {
     });
     res.status(201).json(order);
   } catch (error) {
-    console.error(error);
-    if (error.code === 'P2003') {
-      return res.status(400).json({ error: 'الطبيب غير موجود' });
-    }
-    res.status(500).json({ error: 'حدث خطأ أثناء إضافة العمل' });
+    // P2003 = الطبيب المحدد غير موجود (مفتاح أجنبي)
+    if (error.code === 'P2003') throw new AppError('workOrders.doctorNotFound', 400);
+    throw error;
   }
 });
 
 router.delete('/:id', async (req, res) => {
-  try {
-    const id = parseId(req.params.id);
-    if (!id) {
-      return res.status(400).json({ error: 'معرّف غير صالح' });
-    }
+  const id = parseId(req.params.id);
+  if (!id) throw new AppError('common.invalidId', 400);
 
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.workOrder.findUnique({
-        where: { id },
-        include: { doctor: true },
-      });
-      if (!order) {
-        const err = new Error('NOT_FOUND');
-        err.code = 'WORK_ORDER_NOT_FOUND';
-        throw err;
-      }
+  await prisma.$transaction(async (tx) => {
+    const order = await tx.workOrder.findUnique({
+      where: { id },
+      include: { doctor: true },
+    });
+    if (!order) throw new AppError('workOrders.notFound', 404);
 
-      await tx.workOrder.delete({ where: { id } });
+    await tx.workOrder.delete({ where: { id } });
 
-      await logAudit(tx, req, {
-        action: 'DELETE',
-        entity: 'WorkOrder',
-        entityId: id,
-        before: order,
-      });
-    }, { maxWait: 10000, timeout: 15000 });
+    await logAudit(tx, req, {
+      action: 'DELETE',
+      entity: 'WorkOrder',
+      entityId: id,
+      before: order,
+    });
+  }, { maxWait: 10000, timeout: 15000 });
 
-    res.json({ message: 'تم حذف العمل' });
-  } catch (error) {
-    if (error.code === 'WORK_ORDER_NOT_FOUND' || error.code === 'P2025') {
-      return res.status(404).json({ error: 'العمل غير موجود' });
-    }
-    console.error(error);
-    res.status(500).json({ error: 'حدث خطأ أثناء حذف العمل' });
-  }
+  res.json({ message: req.t('workOrders.deleted') });
 });
 
 module.exports = router;

@@ -10,7 +10,8 @@ const loginLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'محاولات كثيرة، حاول مرة ثانية بعد 15 دقيقة' },
+  handler: (req, res) =>
+    res.status(429).json({ error: req.t('auth.tooManyAttempts') }),
 });
 
 // هاش وهمي: نقارن معه لما يكون اسم المستخدم غلط، حتى يتساوى وقت الرد
@@ -30,12 +31,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       typeof username !== 'string' || typeof password !== 'string' ||
       !username.trim() || !password
     ) {
-      return res.status(400).json({ error: 'اسم المستخدم وكلمة السر مطلوبان' });
+      return res.status(400).json({ error: req.t('auth.credentialsRequired') });
     }
 
     // نرفض كلمات السر الأطول من 72 بايت قبل ما نلمس قاعدة البيانات أو bcrypt
     if (Buffer.byteLength(password, 'utf8') > MAX_PASSWORD_BYTES) {
-      return res.status(400).json({ error: 'كلمة السر طويلة جداً' });
+      return res.status(400).json({ error: req.t('auth.passwordTooLong') });
     }
 
     const user = await prisma.user.findUnique({ where: { username: username.trim() } });
@@ -43,27 +44,27 @@ router.post('/login', loginLimiter, async (req, res) => {
     const passwordMatch = await bcrypt.compare(password, user ? user.password : DUMMY_HASH);
 
     if (!user || !passwordMatch) {
-      return res.status(401).json({ error: 'اسم المستخدم أو كلمة السر غلط' });
+      return res.status(401).json({ error: req.t('auth.invalidCredentials') });
     }
 
     // نجدد الجلسة بعد تسجيل الدخول (يمنع هجوم Session Fixation)
     req.session.regenerate((err) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({ error: 'حدث خطأ أثناء تسجيل الدخول' });
+        return res.status(500).json({ error: req.t('auth.loginError') });
       }
       req.session.userId = user.id;
       req.session.save((saveErr) => {
         if (saveErr) {
           console.error(saveErr);
-          return res.status(500).json({ error: 'حدث خطأ أثناء تسجيل الدخول' });
+          return res.status(500).json({ error: req.t('auth.loginError') });
         }
-        res.json({ message: 'تم تسجيل الدخول بنجاح', username: user.username });
+        res.json({ message: req.t('auth.loggedIn'), username: user.username });
       });
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'حدث خطأ أثناء تسجيل الدخول' });
+    res.status(500).json({ error: req.t('auth.loginError') });
   }
 });
 
@@ -77,7 +78,7 @@ router.post('/logout', (req, res) => {
       secure: isProduction,
       sameSite: isProduction ? 'none' : 'lax',
     });
-    res.json({ message: 'تم تسجيل الخروج' });
+    res.json({ message: req.t('auth.loggedOut') });
   });
 });
 

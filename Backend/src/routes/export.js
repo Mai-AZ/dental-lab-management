@@ -33,11 +33,11 @@ const sanitizeRow = (row) =>
   Object.fromEntries(Object.entries(row).map(([k, v]) => [k, sanitizeCell(v)]));
 
 // دالة مشتركة: تبني ملف Excel من أعمدة وصفوف وترسله للمتصفح
-async function sendExcel(res, { filename, sheetName, columns, rows }) {
+// rtl: الورقة تُعرض من اليمين لليسار (للعربي فقط)
+async function sendExcel(res, { filename, sheetName, columns, rows, rtl }) {
   const workbook = new ExcelJS.Workbook();
-  // rightToLeft: الورقة تُعرض من اليمين لليسار (مناسب للعربي)
   const sheet = workbook.addWorksheet(sheetName, {
-    views: [{ rightToLeft: true }],
+    views: [{ rightToLeft: rtl }],
   });
 
   // columns: [{ header: 'اسم العمود', key: 'حقل', width: 20 }, ...]
@@ -67,15 +67,16 @@ router.get('/sales', async (req, res) => {
 
     await sendExcel(res, {
       filename: 'sales.xlsx',
-      sheetName: 'المبيعات',
+      sheetName: req.t('export.sheet.sales'),
+      rtl: req.lang === 'ar',
       columns: [
-        { header: 'الطبيب', key: 'doctor', width: 22 },
-        { header: 'الخدمة', key: 'serviceType', width: 22 },
-        { header: 'السعر', key: 'price', width: 12 },
-        { header: 'التكلفة', key: 'cost', width: 12 },
-        { header: 'الربح', key: 'profit', width: 12 },
-        { header: 'التاريخ', key: 'saleDate', width: 14 },
-        { header: 'ملاحظات', key: 'notes', width: 30 },
+        { header: req.t('export.col.doctor'), key: 'doctor', width: 22 },
+        { header: req.t('export.col.service'), key: 'serviceType', width: 22 },
+        { header: req.t('export.col.price'), key: 'price', width: 12 },
+        { header: req.t('export.col.cost'), key: 'cost', width: 12 },
+        { header: req.t('export.col.profit'), key: 'profit', width: 12 },
+        { header: req.t('export.col.date'), key: 'saleDate', width: 14 },
+        { header: req.t('export.col.notes'), key: 'notes', width: 30 },
       ],
       rows: sales.map((s) => ({
         doctor: s.doctor?.name ?? '',
@@ -89,7 +90,7 @@ router.get('/sales', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    sendError(res, 'فشل تصدير المبيعات');
+    sendError(res, req.t('export.sales.fail'));
   }
 });
 
@@ -103,14 +104,15 @@ router.get('/purchases', async (req, res) => {
 
     await sendExcel(res, {
       filename: 'purchases.xlsx',
-      sheetName: 'المشتريات',
+      sheetName: req.t('export.sheet.purchases'),
+      rtl: req.lang === 'ar',
       columns: [
-        { header: 'المادة', key: 'material', width: 24 },
-        { header: 'الكمية', key: 'quantity', width: 12 },
-        { header: 'الوحدة', key: 'unit', width: 12 },
-        { header: 'الإجمالي', key: 'totalPrice', width: 14 },
-        { header: 'التاريخ', key: 'purchaseDate', width: 14 },
-        { header: 'ملاحظات', key: 'notes', width: 30 },
+        { header: req.t('export.col.material'), key: 'material', width: 24 },
+        { header: req.t('export.col.quantity'), key: 'quantity', width: 12 },
+        { header: req.t('export.col.unit'), key: 'unit', width: 12 },
+        { header: req.t('export.col.total'), key: 'totalPrice', width: 14 },
+        { header: req.t('export.col.date'), key: 'purchaseDate', width: 14 },
+        { header: req.t('export.col.notes'), key: 'notes', width: 30 },
       ],
       rows: purchases.map((p) => ({
         material: p.material?.name ?? '',
@@ -123,7 +125,7 @@ router.get('/purchases', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    sendError(res, 'فشل تصدير المشتريات');
+    sendError(res, req.t('export.purchases.fail'));
   }
 });
 
@@ -136,14 +138,15 @@ router.get('/materials', async (req, res) => {
 
     await sendExcel(res, {
       filename: 'materials.xlsx',
-      sheetName: 'المخزون',
+      sheetName: req.t('export.sheet.materials'),
+      rtl: req.lang === 'ar',
       columns: [
-        { header: 'المادة', key: 'name', width: 24 },
-        { header: 'الوحدة', key: 'unit', width: 12 },
-        { header: 'الكمية', key: 'quantity', width: 12 },
-        { header: 'السعر الإجمالي', key: 'totalPrice', width: 16 },
-        { header: 'حد التنبيه', key: 'alertThreshold', width: 12 },
-        { header: 'تاريخ الانتهاء', key: 'expiryDate', width: 16 },
+        { header: req.t('export.col.material'), key: 'name', width: 24 },
+        { header: req.t('export.col.unit'), key: 'unit', width: 12 },
+        { header: req.t('export.col.quantity'), key: 'quantity', width: 12 },
+        { header: req.t('export.col.totalPrice'), key: 'totalPrice', width: 16 },
+        { header: req.t('export.col.threshold'), key: 'alertThreshold', width: 12 },
+        { header: req.t('export.col.expiry'), key: 'expiryDate', width: 16 },
       ],
       rows: materials.map((m) => ({
         name: m.name,
@@ -157,7 +160,7 @@ router.get('/materials', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    sendError(res, 'فشل تصدير المواد');
+    sendError(res, req.t('export.materials.fail'));
   }
 });
 
