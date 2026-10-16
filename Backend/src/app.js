@@ -10,16 +10,24 @@ const pgSession = require('connect-pg-simple')(session);
 
 const app = express();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+// مصدر الفرونت المسموح (بدون مسار وبدون / بالآخر). مثال بالإنتاج: https://mai-az.github.io
+const allowedOrigin = (
+  process.env.FRONTEND_URL || (isProduction ? '' : 'http://localhost:5173')
+).replace(/\/+$/, '');
+
+if (!allowedOrigin) {
+  throw new Error('FRONTEND_URL غير موجود بمتغيرات البيئة! لازم تضيفيه بالإنتاج');
+}
+
 // لازم هاد السطر على أي استضافة بتستخدم proxy عشان الكوكي الآمنة والـ rate limit يشتغلوا صح
 app.set('trust proxy', 1);
 
 // رؤوس HTTP أمنية أساسية
 app.use(helmet());
 
-// CORS: بالتطوير المحلي بيستخدم localhost، وبالإنتاج بيستخدم رابط الفرونت اند من متغير البيئة
-// نشيل الـ / من آخر الرابط إذا انكتبت بالغلط، لأنها بتخلي CORS يفشل
-const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
-
+// CORS: بس لمصدر الفرونت المحدد
 app.use(cors({
   origin: allowedOrigin,
   credentials: true,
@@ -46,8 +54,6 @@ app.use('/api', rateLimit({
 if (!process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET غير موجود بمتغيرات البيئة! لازم تضيفه بملف .env');
 }
-
-const isProduction = process.env.NODE_ENV === 'production';
 
 // الجلسات بتنحفظ بقاعدة البيانات (Neon) بدل الذاكرة، فما بتضيع عند إعادة تشغيل السيرفر
 // max: 3 حتى ما نستهلك كل اتصالات قاعدة البيانات
@@ -94,6 +100,7 @@ app.use((req, res, next) => {
   if (sourceOrigin !== allowedOrigin) {
     return res.status(403).json({ error: req.t('common.forbidden') });
   }
+
   next();
 });
 
@@ -135,7 +142,7 @@ app.use((req, res) => {
 // معالج الأخطاء المركزي (لازم يكون آخر middleware)
 app.use(require('./middleware/errorHandler'));
 
-// التشغيل المحلي فقط (على الاستضافات الـ app بيتصدّر وهم بيشغّلوه)
+// التشغيل المحلي فقط (على الاستضافات بيستخدموا server.js)
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {

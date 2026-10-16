@@ -4,6 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 // على GitHub Pages الموقع بيكون تحت مسار اسم الـ repo، فلازم base وقت البناء بس
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/dental-lab-management/' : '/',
+base: process.env.VITE_BASE || (command === 'build' ? '/dental-lab-management/' : '/'),
   plugins: [react(), tailwindcss()],
 }))
