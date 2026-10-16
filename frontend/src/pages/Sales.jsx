@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
+import Pagination from '../components/Pagination';
 import { useLanguage } from '../i18n/LanguageContext';
 
+const PAGE_SIZE = 20;
 const emptySale = { doctorId: '', serviceType: '', price: '', cost: '', notes: '' };
 const emptyDoctor = { name: '', phone: '' };
 
@@ -10,12 +12,18 @@ function Sales() {
   const { t, locale } = useLanguage();
   const [sales, setSales] = useState([]);
   const [doctors, setDoctors] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true); // أول تحميل فقط
+  const [fetching, setFetching] = useState(false); // تغيير الصفحة
   const [showForm, setShowForm] = useState(false);
   const [showDoctorForm, setShowDoctorForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // يمنع النقرة المزدوجة فوراً (يعني ما بتنسجّل عملية بيع مرتين)
   const busyRef = useRef(false);
+  // رقم آخر طلب: إذا وصل رد قديم بعد رد أحدث منتجاهله (نقرات سريعة على التالي)
+  const requestRef = useRef(0);
   const [formData, setFormData] = useState(emptySale);
   const [doctorData, setDoctorData] = useState(emptyDoctor);
 
@@ -23,23 +31,36 @@ function Sales() {
   const num = (value, digits) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 
-  const fetchData = async () => {
+  const loadSales = async (targetPage) => {
+    const id = ++requestRef.current;
+    setFetching(true);
     try {
-      const [salesRes, doctorsRes] = await Promise.all([
-        axiosClient.get('/sales'),
-        axiosClient.get('/doctors'),
-      ]);
-      setSales(salesRes.data);
-      setDoctors(doctorsRes.data);
+      const res = await axiosClient.get('/sales', {
+        params: { page: targetPage, limit: PAGE_SIZE },
+      });
+      if (id !== requestRef.current) return;
+      setSales(res.data.items);
+      setPage(res.data.page);
+      setPages(res.data.pages);
+      setTotal(res.data.total);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (id === requestRef.current) setFetching(false);
+    }
+  };
+
+  const loadDoctors = async () => {
+    try {
+      const res = await axiosClient.get('/doctors');
+      setDoctors(res.data);
+    } catch (err) {
+      console.error(err);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    Promise.all([loadSales(1), loadDoctors()]).finally(() => setLoading(false));
   }, []);
 
   const handleChange = (e) => {
@@ -60,7 +81,7 @@ function Sales() {
     if (!err.response) {
       alert(t('sales.errNetwork'));
     } else {
-      // رسائل الباك بالعربي حالياً، والبديل مترجم
+      // رسائل الباك بتجي مترجمة حسب اللغة، والبديل مترجم
       alert(err.response.data?.error || t(fallbackKey));
     }
   };
@@ -78,7 +99,8 @@ function Sales() {
         cost: Number(formData.cost) || 0,
       });
       resetForm();
-      await fetchData();
+      // الأحدث بيظهر أول، فنرجع لأول صفحة
+      await loadSales(1);
     } catch (err) {
       console.error(err);
       showError(err, 'sales.errGeneric');
@@ -96,7 +118,7 @@ function Sales() {
     try {
       await axiosClient.post('/doctors', doctorData);
       resetDoctorForm();
-      await fetchData();
+      await loadDoctors();
     } catch (err) {
       console.error(err);
       showError(err, 'sales.errDoctor');
@@ -207,36 +229,45 @@ function Sales() {
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full min-w-[560px]">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className={thClass}>{t('sales.doctor')}</th>
-              <th className={thClass}>{t('sales.serviceType')}</th>
-              <th className={thClass}>{t('sales.price')}</th>
-              <th className={thClass}>{t('sales.cost')}</th>
-              <th className={thClass}>{t('sales.date')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sales.length === 0 && (
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className={`overflow-x-auto transition-opacity ${fetching ? 'opacity-60' : ''}`}>
+          <table className="w-full min-w-[560px]">
+            <thead className="bg-slate-50">
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                  {t('sales.empty')}
-                </td>
+                <th className={thClass}>{t('sales.doctor')}</th>
+                <th className={thClass}>{t('sales.serviceType')}</th>
+                <th className={thClass}>{t('sales.price')}</th>
+                <th className={thClass}>{t('sales.cost')}</th>
+                <th className={thClass}>{t('sales.date')}</th>
               </tr>
-            )}
-            {sales.map((s) => (
-              <tr key={s.id} className="border-t border-slate-100 transition hover:bg-teal-50/40">
-                <td className={`${tdClass} font-medium text-slate-800`}>{s.doctor?.name}</td>
-                <td className={tdClass}>{s.serviceType}</td>
-                <td className={tdClass}>{num(s.price, 2)}</td>
-                <td className={tdClass}>{num(s.cost, 2)}</td>
-                <td className={tdClass}>{new Date(s.saleDate).toLocaleDateString(locale)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sales.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                    {t('sales.empty')}
+                  </td>
+                </tr>
+              )}
+              {sales.map((s) => (
+                <tr key={s.id} className="border-t border-slate-100 transition hover:bg-teal-50/40">
+                  <td className={`${tdClass} font-medium text-slate-800`}>{s.doctor?.name}</td>
+                  <td className={tdClass}>{s.serviceType}</td>
+                  <td className={tdClass}>{num(s.price, 2)}</td>
+                  <td className={tdClass}>{num(s.cost, 2)}</td>
+                  <td className={tdClass}>{new Date(s.saleDate).toLocaleDateString(locale)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          page={page}
+          pages={pages}
+          total={total}
+          onChange={loadSales}
+          disabled={fetching}
+        />
       </div>
     </div>
   );

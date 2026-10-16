@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../prismaClient');
 const { logAudit } = require('../utils/audit');
 const AppError = require('../utils/AppError');
+const { parsePagination, buildPage } = require('../utils/pagination');
 
 // نفس سقف المبيعات (sales.js) حتى يكون التعامل مع الأرقام موحّداً
 const MAX_AMOUNT = 1000000000;
@@ -18,12 +19,21 @@ const lockMaterial = (tx, materialId) =>
   tx.$queryRaw`SELECT id FROM "Material" WHERE id = ${materialId} FOR UPDATE`;
 
 // GET /api/purchases - كل عمليات الشراء
+// مع ترقيم: ?page=1&limit=20 (الرد: { items, total, page, pages })
 router.get('/', async (req, res) => {
-  const purchases = await prisma.purchase.findMany({
+  const { page, limit } = parsePagination(req.query);
+  const total = await prisma.purchase.count();
+  const p = buildPage({ page, limit, total });
+
+  const items = await prisma.purchase.findMany({
     include: { material: true },
-    orderBy: { purchaseDate: 'desc' },
+    // id بالترتيب بيضمن ما تتكرر صفوف أو تضيع بين الصفحات لما التاريخ يتشابه
+    orderBy: [{ purchaseDate: 'desc' }, { id: 'desc' }],
+    skip: p.skip,
+    take: p.take,
   });
-  res.json(purchases);
+
+  res.json({ items, total, page: p.page, pages: p.pages });
 });
 
 // POST /api/purchases - إضافة عملية شراء + تحديث كمية المادة وسعر وحدتها تلقائياً

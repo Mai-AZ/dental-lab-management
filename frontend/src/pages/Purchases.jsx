@@ -1,18 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import ExportButton from '../components/ExportButton';
+import Pagination from '../components/Pagination';
 import { useLanguage } from '../i18n/LanguageContext';
+
+const PAGE_SIZE = 20;
 
 function Purchases() {
   const { t, locale } = useLanguage();
   const [purchases, setPurchases] = useState([]);
   const [materials, setMaterials] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true); // أول تحميل فقط
+  const [fetching, setFetching] = useState(false); // تغيير الصفحة
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   // الـ ref بيمنع النقرة المزدوجة فوراً (الـ state بيتحدّث متأخر شوي)
   const busyRef = useRef(false);
+  // رقم آخر طلب: إذا وصل رد قديم بعد رد أحدث منتجاهله (نقرات سريعة على التالي)
+  const requestRef = useRef(0);
   const [formData, setFormData] = useState({
     materialId: '',
     quantity: '',
@@ -20,27 +29,41 @@ function Purchases() {
     notes: '',
   });
 
-  // تنسيق الأرقام والتواريخ حسب اللغة (أرقام لاتينية بالحالتين)
+  // تنسيق الأرقام حسب اللغة (أرقام لاتينية بالحالتين)
   const num = (value, digits) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 
-  const fetchData = async () => {
+  const loadPurchases = async (targetPage) => {
+    const id = ++requestRef.current;
+    setFetching(true);
     try {
-      const [purchasesRes, materialsRes] = await Promise.all([
-        axiosClient.get('/purchases'),
-        axiosClient.get('/materials'),
-      ]);
-      setPurchases(purchasesRes.data);
-      setMaterials(materialsRes.data);
+      const res = await axiosClient.get('/purchases', {
+        params: { page: targetPage, limit: PAGE_SIZE },
+      });
+      if (id !== requestRef.current) return;
+      setPurchases(res.data.items);
+      setPage(res.data.page);
+      setPages(res.data.pages);
+      setTotal(res.data.total);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (id === requestRef.current) setFetching(false);
+    }
+  };
+
+  // المواد للقائمة المنسدلة بالفورم فقط (الاسم والوحدة)
+  const loadMaterials = async () => {
+    try {
+      const res = await axiosClient.get('/materials');
+      setMaterials(res.data);
+    } catch (err) {
+      console.error(err);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    Promise.all([loadPurchases(1), loadMaterials()]).finally(() => setLoading(false));
   }, []);
 
   const handleChange = (e) => {
@@ -65,8 +88,8 @@ function Purchases() {
         totalPrice: Number(formData.totalPrice),
       });
       resetForm();
-      // نعيد تحميل المشتريات والمواد معاً لأن الكمية والسعر تغيّرا في المواد
-      await fetchData();
+      // الأحدث بيظهر أول، فنرجع لأول صفحة
+      await loadPurchases(1);
     } catch (err) {
       console.error(err);
       if (!err.response) {
@@ -87,7 +110,8 @@ function Purchases() {
     setDeletingId(id);
     try {
       await axiosClient.delete(`/purchases/${id}`);
-      await fetchData();
+      // نعيد تحميل نفس الصفحة (الباك بيرجّعنا لآخر صفحة موجودة إذا الصفحة صارت فاضية)
+      await loadPurchases(page);
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || t('purchases.errDelete'));
@@ -187,50 +211,59 @@ function Purchases() {
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-        <table className="w-full min-w-[720px]">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className={thClass}>{t('purchases.material')}</th>
-              <th className={thClass}>{t('purchases.quantity')}</th>
-              <th className={thClass}>{t('purchases.totalPrice')}</th>
-              <th className={thClass}>{t('purchases.unitPrice')}</th>
-              <th className={thClass}>{t('purchases.date')}</th>
-              <th className={thClass}>{t('purchases.notes')}</th>
-              <th className={thClass}>{t('purchases.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {purchases.length === 0 && (
+      <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className={`overflow-x-auto transition-opacity ${fetching ? 'opacity-60' : ''}`}>
+          <table className="w-full min-w-[720px]">
+            <thead className="bg-slate-50">
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                  {t('purchases.empty')}
-                </td>
+                <th className={thClass}>{t('purchases.material')}</th>
+                <th className={thClass}>{t('purchases.quantity')}</th>
+                <th className={thClass}>{t('purchases.totalPrice')}</th>
+                <th className={thClass}>{t('purchases.unitPrice')}</th>
+                <th className={thClass}>{t('purchases.date')}</th>
+                <th className={thClass}>{t('purchases.notes')}</th>
+                <th className={thClass}>{t('purchases.actions')}</th>
               </tr>
-            )}
-            {purchases.map((p) => (
-              <tr key={p.id} className="border-t border-slate-100 transition hover:bg-teal-50/40">
-                <td className={`${tdClass} font-medium text-slate-800`}>{p.material?.name}</td>
-                <td className={tdClass}>{num(p.quantity, 3)}</td>
-                <td className={tdClass}>{num(p.totalPrice, 2)}</td>
-                <td className={tdClass}>
-                  {p.quantity > 0 ? num(p.totalPrice / p.quantity, 2) : '-'}
-                </td>
-                <td className={tdClass}>{new Date(p.purchaseDate).toLocaleDateString(locale)}</td>
-                <td className={`${tdClass} text-slate-600`}>{p.notes || '-'}</td>
-                <td className={tdClass}>
-                  <button
-                    onClick={() => handleDelete(p.id)}
-                    disabled={deletingId !== null || submitting}
-                    className="font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {deletingId === p.id ? t('purchases.deleting') : t('purchases.delete')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {purchases.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    {t('purchases.empty')}
+                  </td>
+                </tr>
+              )}
+              {purchases.map((p) => (
+                <tr key={p.id} className="border-t border-slate-100 transition hover:bg-teal-50/40">
+                  <td className={`${tdClass} font-medium text-slate-800`}>{p.material?.name}</td>
+                  <td className={tdClass}>{num(p.quantity, 3)}</td>
+                  <td className={tdClass}>{num(p.totalPrice, 2)}</td>
+                  <td className={tdClass}>
+                    {p.quantity > 0 ? num(p.totalPrice / p.quantity, 2) : '-'}
+                  </td>
+                  <td className={tdClass}>{new Date(p.purchaseDate).toLocaleDateString(locale)}</td>
+                  <td className={`${tdClass} text-slate-600`}>{p.notes || '-'}</td>
+                  <td className={tdClass}>
+                    <button
+                      onClick={() => handleDelete(p.id)}
+                      disabled={deletingId !== null || submitting}
+                      className="font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deletingId === p.id ? t('purchases.deleting') : t('purchases.delete')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          page={page}
+          pages={pages}
+          total={total}
+          onChange={loadPurchases}
+          disabled={fetching || deletingId !== null}
+        />
       </div>
     </div>
   );

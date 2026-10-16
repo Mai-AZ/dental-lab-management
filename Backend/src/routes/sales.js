@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../prismaClient');
 const AppError = require('../utils/AppError');
+const { parsePagination, buildPage } = require('../utils/pagination');
 
 const MAX_SERVICE_LENGTH = 100;
 const MAX_NOTES_LENGTH = 500;
@@ -23,12 +24,21 @@ const parseAmount = (value) => {
 };
 
 // GET /api/sales - كل عمليات البيع (مع اسم الطبيب)
+// مع ترقيم: ?page=1&limit=20 (الرد: { items, total, page, pages })
 router.get('/', async (req, res) => {
-  const sales = await prisma.sale.findMany({
+  const { page, limit } = parsePagination(req.query);
+  const total = await prisma.sale.count();
+  const p = buildPage({ page, limit, total });
+
+  const items = await prisma.sale.findMany({
     include: { doctor: true },
-    orderBy: { saleDate: 'desc' },
+    // id بالترتيب بيضمن ما تتكرر صفوف أو تضيع بين الصفحات لما التاريخ يتشابه
+    orderBy: [{ saleDate: 'desc' }, { id: 'desc' }],
+    skip: p.skip,
+    take: p.take,
   });
-  res.json(sales);
+
+  res.json({ items, total, page: p.page, pages: p.pages });
 });
 
 // POST /api/sales - تسجيل عملية بيع جديدة
